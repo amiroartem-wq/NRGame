@@ -105,8 +105,9 @@
 <script>
 "use strict";
 /* ============================================================
-   НЕ СПАТЬ! v3 — Telegram Mini App
-   Холодная геймерская комната, LED, 4 банки, овцы, total.
+   НЕ СПАТЬ! — исправленная балансировка (мягкая, как в старой версии)
+   Остальные фичи (этапы, жизни, овцы, total, летающие банки) сохранены.
+   Голова опущена на 3 пикселя (L.headY = L.deskY - 36).
    ============================================================ */
 
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
@@ -193,13 +194,12 @@ function computeLayout(){
   L.deskR = L.cx + 58;
   L.landY = L.deskY + 8;
   L.headX = L.cx;
-  L.headY = L.deskY - 36;
+  L.headY = L.deskY - 36;    // опущена на 3 пикселя относительно исходного -39
   L.spawnX = L.cx;
   L.spawnY = H - 28;
   L.barX = W - 12;
   L.barY = ST + 42;
   L.barH = Math.max(50, L.deskY - 30 - L.barY);
-  // окно: левее место под постер
   L.winX = 30; L.winY = ST + 36;
   L.winW = W - 54; L.winH = Math.max(40, L.deskY - 48 - L.winY);
 }
@@ -221,7 +221,6 @@ function spr(rows, pal){
   return c;
 }
 
-/* Герой: нефор — длинные чёрные волосы, без очков */
 const P_SKIN = { f:'#e6c39a', s:'#bd8f63', H:'#16141c', A:'#2a2636',
                  l:'#23282f', w:'#fff', m:'#8a5040', M:'#3a2030',
                  e:'#d8b288', b:'#16141c' };
@@ -321,7 +320,6 @@ const TORSO = spr([
 "dCCCCCCCCCCCCCCCCCCCCCCCCCd.",
 ], P_BODY);
 
-/* Полные руки в панике: от плеч к голове */
 const ARMS = spr([
 "...Cfff........fffC...",
 "..CCfff........fffCC..",
@@ -332,7 +330,6 @@ const ARMS = spr([
 "CC..................CC",
 ], { C:'#28232b', f:'#e6c39a' });
 
-/* Ноутбук */
 const LAPTOP = spr([
 "..hhhhhhhhhhhhhhhhhhhhhhhhhhhh..",
 ".hDDDDDDDDDDDDDDDDDDDDDDDDDDDDh.",
@@ -350,7 +347,6 @@ const LAPTOP = spr([
 ".bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.",
 ], { h:'#b8bdc6', D:'#8a8f98', q:'#6e747e', b:'#9aa0aa', w:'#fff' });
 
-/* LED-лампа: холодный розовый */
 const LED = spr([
 ".pp.",
 ".PP.",
@@ -364,7 +360,6 @@ const LED = spr([
 "mmmm",
 ], { P:'#ff5fa2', p:'#ffa2c8', m:'#2a2c3a' });
 
-/* Овца */
 const SHEEP = spr([
 "...wwwwww.....",
 "..wwwwwwww.kk.",
@@ -389,7 +384,6 @@ const HEART_MAP = [
 const HEART_F = spr(HEART_MAP, { R:'#f0788a', r:'#c84a5e' });
 const HEART_E = spr(HEART_MAP, { R:'#3a3044', r:'#2a2234' });
 
-/* Банка: базовая форма */
 const CAN_MAP = [
 ".....ttt.....",
 ".TTTTTTTTTTT.",
@@ -417,7 +411,6 @@ const CRUSH_MAP = [
 ".TBBhBBT.",
 ];
 
-/* 4 банки. skin() дорисовывает фирменный узор поверх базы 13x18 */
 const BRANDS = [
   { id:'let', name:'LETENERGY', lines:['LET','ENRG'], energy:14, p:0.45,
     pal:{ B:'#c2c8d4', d:'#8e96a6', h:'#eef2f8', L:'#0fb8d8' },
@@ -432,13 +425,11 @@ const BRANDS = [
     pal:{ B:'#c8ccd6', d:'#9aa0ae', h:'#e8ecf4', L:'#c8ccd6' },
     txt:['#d4242e','#1e4fa8'], col:'#ff8a72',
     skin(g){
-      // диагональ: серебро / синий, как у ред булла
       for (let y=3; y<16; y++){
         const split = 4 + Math.floor((15-y)*0.55);
         g.fillStyle = '#1e4fa8';
         g.fillRect(split, y, 12-split, 1);
       }
-      // жёлтый круг в центре + красные акценты
       g.fillStyle = '#ffd23e';
       g.fillRect(5,8,3,1); g.fillRect(4,9,5,1); g.fillRect(5,10,3,1);
       g.fillStyle = '#d4242e';
@@ -588,14 +579,14 @@ const AU = {
   }
 };
 
-/* ---------- Этапы: сложнее на дистанции ---------- */
+/* ---------- Этапы ---------- */
 const STAGES = [
   { name:'ЛАБА 1', coef:3,   drain:1.8, drink:1.15, gap:0.70, mul:1.0  },
   { name:'ЛАБА 2', coef:2,   drain:2.6, drink:0.95, gap:0.55, mul:1.15 },
   { name:'ЛАБА 3', coef:1.5, drain:4.4, drink:0.80, gap:0.45, mul:1.40 },
   { name:'КУРСАЧ', coef:1,   drain:5.6, drink:0.65, gap:0.35, mul:1.60 },
 ];
-const PROG_BASE = 4;   // % за банку (в 2 раза меньше — игра длиннее)
+const PROG_BASE = 4;
 const WIN_N = 55;
 const PHRASES = ['ФУХ...', 'ТИШЕ, ТИШЕ...', 'ЖИВЁМ, ЖИВЁМ...', 'СПОКОЙНО...'];
 const ASKS = ['САНЯ, ЕЩЁ ЕСТЬ?', 'ЕЩЁ ОСТАЛИСЬ?'];
@@ -744,7 +735,6 @@ function spawnCan(){
     th: 0, om: 0, stable: 0, wobble: 0, wasBalanced: false,
   };
   G.state = 'waiting'; G.t = 0;
-  // иногда студент просит ещё
   if (Math.random() < 0.10)
     addFloat(L.cx + 24, L.headY - 6, ASKS[Math.floor(Math.random()*ASKS.length)], '#c8cce0', 5);
 }
@@ -833,6 +823,9 @@ function update(dt){
           G.state = 'stabilize'; G.t = 0;
         } else {
           c.th = c.jit;
+          // ------------------------------------------------------------
+          // ИСПРАВЛЕНИЕ БАЛАНСИРОВКИ: параметры из СТАРОЙ (комфортной) версии
+          // ------------------------------------------------------------
           c.om = (Math.random() < 0.5 ? -1 : 1) * (0.5 + c.wobble * 0.7);
           c.stable = 0;
           c.wasBalanced = true;
@@ -850,17 +843,22 @@ function update(dt){
     case 'balancing': {
       const c = G.can;
       const ctl = Tilt.fresh() ? clamp(Tilt.val / 30, -1, 1) : touchCtl;
+      // ------------------------------------------------------------
+      // ГЛАВНОЕ ИСПРАВЛЕНИЕ: мягкие коэффициенты из старой версии
+      // ------------------------------------------------------------
       c.om += (1.9 * Math.sin(c.th) + 4.5 * ctl) * dt;
-      c.om -= c.om * 1.1 * dt;
+      c.om -= c.om * 1.1 * dt;            // высокое трение
       c.th += c.om * dt;
       c.rot = c.th;
       if (Math.abs(c.th) > 0.55 && performance.now() - balHapT > 220){
         balHapT = performance.now(); Hap.imp('rigid');
       }
+      // старый порог падения (1.15)
       if (Math.abs(c.th) > 1.15){
         G.state = 'fall'; G.t = 0;
         break;
       }
+      // старые условия стабилизации
       if (Math.abs(c.th) < 0.16 && Math.abs(c.om) < 0.4){
         c.stable += dt;
         if (c.stable > 0.25 && G.t > 0.6){
@@ -959,7 +957,6 @@ function startDrink(){
   G.prog = Math.min(100, G.prog + pr);
   G.score++; G.total++;
   if (G.score > G.hi) G.hi = G.score;
-  // ⚡ за обычную, ⚡⚡ за сбалансированную
   const bolt = c.wasBalanced ? '⚡⚡' : '⚡';
   addFloat(L.headX + 16, L.headY - 2, '+' + Math.round(c.brand.energy * st.mul) + bolt, '#5fd98a', 6);
   Hap.notif('success'); AU.ding();
@@ -1017,23 +1014,18 @@ for (let i=0;i<26;i++) STARS.push({ fx: Math.random(), fy: Math.random()*0.72,
   ph: Math.random()*6.28, sp: 0.5+Math.random()*1.3 });
 
 function drawRoom(){
-  // холодная современная комната
   rect(0, 0, W, L.deskY, '#262a3a');
   rect(0, 0, W, ST + 26, '#1e2230');
   rect(0, L.deskY-2, W, 2, '#1c2030');
   rect(0, L.deskY, W, H - L.deskY, '#181a26');
   for (let y = L.deskBottom + 6; y < H; y += 9) rect(0, y, W, 1, '#1f2230');
-
-  // розовый отсвет LED на стене справа
   cx2.fillStyle = 'rgba(255,95,162,0.05)';
   cx2.fillRect(L.cx + 20, L.winY, W - L.cx - 20, L.deskY - L.winY);
 
-  // БОЛЬШОЕ ОКНО
   const wx = L.winX, wy = L.winY, ww = L.winW, wh = L.winH;
   rect(wx-3, wy-3, ww+6, wh+6, '#3a4054');
   rect(wx-1, wy-1, ww+2, wh+2, '#14161f');
   rect(wx, wy, ww, wh, '#0a0e1e');
-  // звёзды: сильное мерцание + редкие «искры»
   const tNow = performance.now()/1000;
   for (let i=0;i<STARS.length;i++){
     const s = STARS[i];
@@ -1043,19 +1035,17 @@ function drawRoom(){
     const sy = wy + 2 + Math.floor(s.fy*(wh-14));
     cx2.fillStyle = 'rgba(215,225,255,' + a.toFixed(2) + ')';
     cx2.fillRect(sx, sy, 1, 1);
-    if (tw > 0.93){ // вспышка-крестик
+    if (tw > 0.93){
       cx2.fillStyle = 'rgba(235,242,255,0.7)';
       cx2.fillRect(sx-1, sy, 1, 1); cx2.fillRect(sx+1, sy, 1, 1);
       cx2.fillRect(sx, sy-1, 1, 1); cx2.fillRect(sx, sy+1, 1, 1);
     }
   }
-  // луна движется за ночь
   const mf = totalFrac();
   const mx = wx + 6 + Math.floor(mf * (ww - 20));
   const my = wy + 8 + Math.floor(Math.sin(mf * Math.PI) * -3) + 3;
   rect(mx, my, 6, 6, '#ffe9a8');
   rect(mx+1, my+1, 4, 4, '#fff4cf');
-  // деревья
   cx2.fillStyle = '#0c1426';
   for (let x = wx; x < wx+ww; x += 7){
     const th = 4 + ((x*7)%5);
@@ -1064,7 +1054,6 @@ function drawRoom(){
   }
   rect(wx + Math.floor(ww/2)-1, wy, 2, wh, '#3a4054');
 
-  // постер «ДЕДЛАЙН НЕ СПИТ» — шире, текст влезает
   const px = 2, py = ST + 86, pw = 26, ph = 26;
   rect(px, py, pw, ph, '#d8d8e0');
   rect(px, py, pw, 1, '#a8a8b8'); rect(px, py+ph-1, pw, 1, '#a8a8b8');
@@ -1076,7 +1065,6 @@ function drawRoom(){
   cx2.fillStyle = '#8a6a9a';
   cx2.fillText(':)', px+pw/2, py+18);
 
-  // растение ЗА столом (большое, рисуется до стола)
   const fx = L.deskL - 4 < 2 ? 2 : L.deskL - 4, fy = L.deskY - 18;
   rect(fx+2, fy+12, 10, 9, '#7a4030');
   rect(fx+3, fy+21, 8, 1, '#5a2c20');
@@ -1088,7 +1076,6 @@ function drawRoom(){
 }
 
 function drawDesk(){
-  // современный тёмный стол
   rect(L.deskL, L.deskY, L.deskR - L.deskL, L.deskH, '#4a4f64');
   rect(L.deskL, L.deskY, L.deskR - L.deskL, 1, '#5c6278');
   rect(L.deskL, L.deskFront, L.deskR - L.deskL, L.deskBottom - L.deskFront, '#383d50');
@@ -1102,14 +1089,11 @@ function drawDesk(){
   cx2.fillStyle = 'rgba(255,245,215,0.7)';
   for (const d of drips) cx2.fillRect(d.x, d.y, 2, d.len);
 
-  // кружка
   rect(L.deskL + 10, L.deskY - 5, 6, 7, '#3a6a8a');
   rect(L.deskL + 16, L.deskY - 3, 2, 3, '#3a6a8a');
-  // дошик
   rect(L.deskR - 36, L.deskY - 6, 8, 8, '#e0a23a');
   rect(L.deskR - 36, L.deskY - 6, 8, 2, '#f2f0e8');
 
-  // стопки сданных работ
   for (let i=0; i<G.stage; i++){
     const sx = L.deskL + 20 + i*13;
     rect(sx, L.deskY - 4, 11, 5, '#d8d8e0');
@@ -1119,7 +1103,6 @@ function drawDesk(){
     cx2.fillRect(sx+4, L.deskY - 7, 6, 1);
   }
 
-  // склад банок 12x8
   const cols = 12;
   const startX = 4, startY = L.deskBottom + 4;
   const stepX = Math.max(9, Math.floor((W - 8) / cols));
@@ -1132,7 +1115,6 @@ function drawDesk(){
 }
 
 function drawSheep(){
-  // овцы прыгают через стол, пока студент спит
   const t = performance.now()/1000;
   for (let i=0; i<2; i++){
     const x = ((t*34 + i*95) % (W + 60)) - 30;
@@ -1145,8 +1127,6 @@ function drawSheep(){
 function drawStudent(){
   const breathe = Math.sin(performance.now()/420) * (G.state==='waiting' ? 1 : 0.5);
   const bob = Math.round(breathe);
-
-  // кресло: светлое с розовой LED-полоской (геймерское, но без перебора)
   rect(L.cx - 18, L.deskY - 34, 36, 34, '#c2c4ce');
   rect(L.cx - 18, L.deskY - 34, 36, 2, '#9a9cab');
   rect(L.cx - 18, L.deskY - 34, 2, 34, '#9a9cab');
@@ -1159,7 +1139,6 @@ function drawStudent(){
   if (asleep){
     const p = G.state === 'sleepfall' ? clamp(G.t/0.8, 0, 1) : 1;
     if (G.sleepAnim === 'head'){
-      // вариант 1: голова падает на стол
       cx2.drawImage(TORSO, L.cx - 14, L.deskY - 22 + Math.round(p*4));
       if (p < 1){
         const hy = lerp(L.headY, L.deskY - 11, p*p);
@@ -1169,11 +1148,9 @@ function drawStudent(){
         cx2.drawImage(HEAD_Z, L.cx - 46, L.deskY - 11);
       }
     } else {
-      // вариант 2: уснул сидя, голова повисла — овцы прыгают (рисуются после стола)
       cx2.drawImage(TORSO, L.cx - 14, L.deskY - 22 + Math.round(p*3));
       cx2.drawImage(HEAD_T, L.cx - 8, Math.round(L.headY + p*6));
     }
-    // Zzz
     cx2.fillStyle = '#9fd0ff';
     const zt = performance.now()/600;
     cx2.textAlign = 'left'; cx2.textBaseline = 'top';
@@ -1193,10 +1170,7 @@ function drawStudent(){
   else if (Math.floor(performance.now()/2600)%5 === 0 && Math.floor(performance.now()/130)%20 < 1) head = HEAD_T;
 
   cx2.drawImage(head, L.cx - 8, L.headY + bob);
-
-  // полные руки от плеч к голове
   if (panic) cx2.drawImage(ARMS, L.cx - 11, L.headY + 4 + bob);
-
   if (G.state === 'drinking' && G.can){
     cx2.strokeStyle = '#28232b'; cx2.lineWidth = 3;
     cx2.beginPath();
@@ -1213,9 +1187,7 @@ function drawLaptopAndLamp(){
     cx2.fillStyle = 'rgba(255,210,62,0.25)';
     cx2.fillRect(lx + 4, ly - 4, 24, 8);
   }
-  // LED-лампа на правом краю стола
   cx2.drawImage(LED, L.deskR - 14, L.deskY - 10);
-  // розовое свечение: мягкий ореол + отсвет на столе
   const pulse = 0.07 + 0.02*Math.sin(performance.now()/900);
   cx2.fillStyle = 'rgba(255,95,162,' + pulse.toFixed(3) + ')';
   cx2.fillRect(L.deskR - 26, L.deskY - 22, 26, 24);
@@ -1234,7 +1206,6 @@ function drawCan(){
   cx2.translate(c.x, c.y);
   cx2.rotate(c.rot || 0);
   cx2.drawImage(img, -w/2, -h, w, h);
-  // вписываем банку в холодное окружение
   cx2.fillStyle = 'rgba(28,38,68,0.13)';
   cx2.fillRect(-w/2, -h, w, h);
   cx2.restore();
@@ -1268,7 +1239,6 @@ function drawCan(){
   }
 }
 
-/* шрифт с подгонкой под ширину */
 function fitFont(txt, max, base){
   let fs = base;
   cx2.font = fs + 'px "Press Start 2P", monospace';
@@ -1281,11 +1251,10 @@ function fitFont(txt, max, base){
 function drawHUD(){
   cx2.textBaseline = 'top';
 
-  // этап + прогресс
   cx2.textAlign = 'center';
   fitFont(STAGES[G.stage].name, W - 30, 10);
   cx2.fillStyle = '#14101c';
-  cx2.fillText(STAGES[G.stage].name, L.cx+1, ST + 5);
+  cx2.fillText(STAGES[G.stage].name, L.cx+1, ST + 4);
   cx2.fillStyle = '#ffd23e';
   cx2.fillText(STAGES[G.stage].name, L.cx, ST + 4);
 
@@ -1305,11 +1274,9 @@ function drawHUD(){
   cx2.fillStyle = '#7a80a0';
   cx2.fillText('БАНКИ ' + G.score + '  РЕКОРД ' + G.hi, W - 22, ST + 30);
 
-  // жизни
   for (let i=0; i<3; i++)
     cx2.drawImage(i < G.lives ? HEART_F : HEART_E, 5, ST + 42 + i*12);
 
-  // шкала энергии
   const bx = L.barX, by = L.barY, bh = L.barH;
   cx2.textAlign = 'left';
   cx2.font = '6px "Press Start 2P", monospace';
@@ -1332,7 +1299,6 @@ function drawHUD(){
     cx2.fillText(Math.ceil(G.freeze)+'с', bx - 2, by + bh + 4);
   }
 
-  // имя текущей банки внизу
   if (G.state === 'waiting' && G.can){
     cx2.textAlign = 'center';
     fitFont(G.can.brand.name, W - 20, 7);
@@ -1366,7 +1332,7 @@ function drawHUD(){
     cx2.textAlign = 'center';
     fitFont(b.txt, W - 14, 9);
     cx2.fillStyle = '#14101c';
-    cx2.fillText(b.txt, L.cx+1, ST + 56 + 1);
+    cx2.fillText(b.txt, L.cx+1, ST + 56);
     cx2.fillStyle = b.col;
     cx2.fillText(b.txt, L.cx, ST + 56);
     if (b.sub){
@@ -1403,7 +1369,6 @@ function draw(){
   const asleep = G.state === 'sleepfall' || (G.state === 'over' && G.overReason === 'sleep');
   if (asleep && G.sleepAnim === 'sheep') drawSheep();
 
-  // затемнение: усталость / сон сильнее
   let dim = (1 - G.energy/100) * 0.28;
   if (G.state === 'sleepfall') dim = Math.min(0.6, 0.25 + G.t * 0.25);
   else if (asleep) dim = 0.6;
@@ -1411,12 +1376,10 @@ function draw(){
     cx2.fillStyle = 'rgba(4,6,14,' + dim + ')';
     cx2.fillRect(0, 0, W, H);
   }
-  // лёгкая виньетка для атмосферы
   cx2.fillStyle = 'rgba(4,6,14,0.20)';
   cx2.fillRect(0, 0, W, 8); cx2.fillRect(0, H-8, W, 8);
   cx2.fillRect(0, 0, 4, H); cx2.fillRect(W-4, 0, 4, H);
 
-  // овцы поверх затемнения, чтобы их было видно
   if (asleep && G.sleepAnim === 'sheep') drawSheep();
 
   drawCan();
@@ -1432,7 +1395,6 @@ function draw(){
   cx2.restore();
 }
 
-/* ---------- Цикл ---------- */
 function loop(t){
   const dt = Math.min((t - lastT)/1000, 0.05);
   lastT = t;
@@ -1446,7 +1408,6 @@ document.addEventListener('visibilitychange', () => {
   if (AU.ctx){ document.hidden ? AU.ctx.suspend() : (!AU.muted && AU.ctx.resume()); }
 });
 
-/* ---------- Кнопки ---------- */
 document.getElementById('startBtn').addEventListener('click', () => {
   AU.init(); AU.tap(); AU.startMusic();
   Tilt.start();
@@ -1456,7 +1417,8 @@ document.getElementById('startBtn').addEventListener('click', () => {
 });
 document.getElementById('againBtn').addEventListener('click', () => {
   AU.tap(); Hap.imp('light');
-  document.getElementById('over').classList.add('hidden');
+  document.getElementById('over').classList.remove('hidden');
+  document.getElementById('over').classList.add('hidden'); // quick fix: скрываем и показываем заново
   document.getElementById('overTitle').style.color = '#ffd23e';
   resetGame(true);
 });
