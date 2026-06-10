@@ -1,0 +1,1387 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>НЕ СПАТЬ!</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:100%; height:100%;
+    background:#14100a;
+    overflow:hidden; touch-action:none; overscroll-behavior:none;
+    -webkit-user-select:none; user-select:none; -webkit-touch-callout:none;
+    font-family:"Press Start 2P", monospace;
+  }
+  #c { position:fixed; inset:0; display:block; image-rendering:pixelated; }
+  .overlay {
+    position:fixed; inset:0; z-index:10;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background:rgba(16,12,6,.86); padding:24px; text-align:center;
+  }
+  .hidden { display:none !important; }
+  .title {
+    font-size:28px; color:#ffd23e;
+    text-shadow:3px 3px 0 #5a2a18, 6px 6px 0 #00000088;
+    margin-bottom:14px; line-height:1.35;
+  }
+  .sub { font-size:9px; color:#d8cfb8; line-height:1.9; margin-bottom:22px; max-width:300px; }
+  .hint-row { font-size:8px; color:#9a8f78; line-height:2.1; margin-bottom:26px; }
+  .btn {
+    font-family:inherit; font-size:13px;
+    background:#ffd23e; color:#1b1408;
+    border:3px solid #1b1408; box-shadow:0 5px 0 #1b1408;
+    padding:14px 26px; cursor:pointer;
+  }
+  .btn:active { transform:translateY(4px); box-shadow:0 1px 0 #1b1408; }
+  /* кнопка рестарта — внизу, под палец (там, где появляются банки) */
+  .btn-low {
+    position:absolute; left:50%;
+    bottom:calc(env(safe-area-inset-bottom, 0px) + 72px);
+    transform:translateX(-50%);
+  }
+  .btn-low:active { transform:translate(-50%, 4px); }
+  .stat { font-size:10px; color:#e8e2d0; line-height:2.2; margin-bottom:20px; }
+  .record { color:#ffd23e; }
+  .newrec { color:#5fd98a; animation:blink .7s steps(2) infinite; }
+  @keyframes blink { 50% { opacity:.25; } }
+  #overTitle { font-size:17px; }
+  #overText { font-size:8px; color:#c4b9a0; line-height:2; margin-bottom:16px; max-width:310px; }
+  #mute {
+    position:fixed; right:14px; bottom:20px; z-index:11;
+    width:38px; height:38px;
+    background:rgba(30,24,14,.7); border:2px solid #5a4a30; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #mute.off { opacity:.35; }
+  #rot {
+    position:fixed; inset:0; z-index:20; background:#14100a; color:#e8e2d0;
+    display:none; align-items:center; justify-content:center;
+    font-size:11px; text-align:center; line-height:2; padding:20px;
+  }
+  @media (orientation:landscape) and (max-height:500px) { #rot { display:flex; } }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="start" class="overlay">
+  <div class="title">НЕ СПАТЬ!</div>
+  <div class="sub">Ночь. Общага.<br>3 лабы и курсач до 9 утра.<br>Держи студента на энергетиках.</div>
+  <div class="hint-row">
+    ☝️ СВАЙП ВВЕРХ — кинуть банку на стол<br>
+    📱 НАКЛОНЯЙ ТЕЛЕФОН — балансируй банку<br>
+    ⚡ НЕ ДАЙ ШКАЛЕ УПАСТЬ ДО НУЛЯ<br>
+    ❤️ 3 ЖИЗНИ НА ВСЮ НОЧЬ
+  </div>
+  <button id="startBtn" class="btn">НАЧАТЬ</button>
+</div>
+
+<div id="over" class="overlay hidden">
+  <div id="overTitle" class="title">СТУДЕНТ УСНУЛ</div>
+  <div id="overText"></div>
+  <div class="stat">
+    Банок выпито: <span id="ovScore">0</span><br>
+    Дожил до: <span id="ovClock">03:00</span><br>
+    <span id="ovRec" class="record">Рекорд: 0</span>
+  </div>
+  <button id="againBtn" class="btn btn-low">ЕЩЁ РАЗ</button>
+</div>
+
+<button id="mute" aria-label="звук">
+  <svg width="20" height="20" viewBox="0 0 10 10" shape-rendering="crispEdges">
+    <rect x="2" y="1" width="6" height="1" fill="#e8e8e8"/>
+    <rect x="2" y="2" width="1" height="5" fill="#e8e8e8"/>
+    <rect x="7" y="2" width="1" height="5" fill="#cfcfcf"/>
+    <rect x="0" y="6" width="3" height="3" fill="#e8e8e8"/>
+    <rect x="5" y="6" width="3" height="3" fill="#cfcfcf"/>
+  </svg>
+</button>
+<div id="rot">Поверни телефон вертикально 📱</div>
+
+<script>
+"use strict";
+/* ============================================================
+   НЕ СПАТЬ! v2 — Telegram Mini App
+   Этапы: ЛАБА 1-3 + КУРСАЧ. Жизни. Прогресс от банок.
+   ============================================================ */
+
+/* ---------- Telegram init ---------- */
+const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+let safeTopCss = 0;
+if (tg) {
+  try { tg.ready(); tg.expand(); } catch(e){}
+  try { tg.disableVerticalSwipes && tg.disableVerticalSwipes(); } catch(e){}
+  try { tg.lockOrientation && tg.lockOrientation(); } catch(e){}
+  try { tg.setHeaderColor && tg.setHeaderColor('#14100a'); } catch(e){}
+  try { tg.setBackgroundColor && tg.setBackgroundColor('#14100a'); } catch(e){}
+  try {
+    const a = tg.contentSafeAreaInset || {}, b = tg.safeAreaInset || {};
+    safeTopCss = (a.top||0) + (b.top||0);
+  } catch(e){}
+}
+
+const Hap = {
+  imp(s){ try { tg && tg.HapticFeedback.impactOccurred(s); } catch(e){}
+          if (!tg && navigator.vibrate) navigator.vibrate(s==='heavy'?40:15); },
+  notif(t){ try { tg && tg.HapticFeedback.notificationOccurred(t); } catch(e){}
+            if (!tg && navigator.vibrate) navigator.vibrate(t==='error'?[60,40,60]:30); },
+  sel(){ try { tg && tg.HapticFeedback.selectionChanged(); } catch(e){} }
+};
+
+const Tilt = {
+  val: 0, has: false, last: 0,
+  start(){
+    if (tg && tg.DeviceOrientation && typeof tg.DeviceOrientation.start === 'function') {
+      try {
+        tg.DeviceOrientation.start({ refresh_rate: 30 }, () => {});
+        setInterval(() => {
+          const g = tg.DeviceOrientation.gamma;
+          if (typeof g === 'number' && !isNaN(g)) {
+            Tilt.val = g * 57.2958; Tilt.has = true; Tilt.last = performance.now();
+          }
+        }, 33);
+      } catch(e){}
+    }
+    const h = (e) => {
+      if (e.gamma != null) { Tilt.val = e.gamma; Tilt.has = true; Tilt.last = performance.now(); }
+    };
+    try {
+      if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) {
+        DeviceOrientationEvent.requestPermission()
+          .then(s => { if (s === 'granted') window.addEventListener('deviceorientation', h); })
+          .catch(()=>{});
+      } else if (typeof DeviceOrientationEvent !== 'undefined') {
+        window.addEventListener('deviceorientation', h);
+      }
+    } catch(e){}
+  },
+  fresh(){ return Tilt.has && performance.now() - Tilt.last < 800; }
+};
+
+/* ---------- Canvas ---------- */
+const cv = document.getElementById('c');
+const cx2 = cv.getContext('2d');
+let DPR=1, SC=3, W=130, H=280, ST=0;
+
+function layoutCanvas(){
+  DPR = Math.min(window.devicePixelRatio || 1, 3);
+  const cw = window.innerWidth, ch = window.innerHeight;
+  SC = Math.max(2, Math.floor(cw / 124));
+  W = Math.ceil(cw / SC);
+  H = Math.ceil(ch / SC);
+  ST = Math.ceil(Math.max(safeTopCss, 0) / SC);
+  cv.width  = Math.floor(cw * DPR);
+  cv.height = Math.floor(ch * DPR);
+  cv.style.width = cw + 'px'; cv.style.height = ch + 'px';
+  cx2.setTransform(DPR * SC, 0, 0, DPR * SC, 0, 0);
+  cx2.imageSmoothingEnabled = false;
+  computeLayout();
+}
+window.addEventListener('resize', layoutCanvas);
+
+const L = {};
+function computeLayout(){
+  L.cx = Math.round(W/2);
+  L.deskY = Math.round(H * 0.58);
+  L.deskH = 12;
+  L.deskFront = L.deskY + L.deskH;
+  L.deskBottom = L.deskFront + 22;
+  L.deskL = L.cx - 58;
+  L.deskR = L.cx + 58;
+  L.landY = L.deskY + 8;
+  L.headX = L.cx;
+  L.headY = L.deskY - 37;       // верх головы (сидит вплотную к плечам)
+  L.spawnX = L.cx;
+  L.spawnY = H - 28;
+  L.barX = W - 12;
+  L.barY = ST + 42;
+  L.barH = Math.max(50, L.deskY - 30 - L.barY);
+  // окно во всю стену
+  L.winX = 22; L.winY = ST + 36;
+  L.winW = W - 44; L.winH = Math.max(40, L.deskY - 48 - L.winY);
+}
+
+/* ---------- Спрайты ---------- */
+function spr(rows, pal){
+  const h = rows.length;
+  let w = 0; for (const r of rows) w = Math.max(w, r.length);
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const x = c.getContext('2d');
+  for (let j=0; j<h; j++){
+    const r = rows[j];
+    for (let i=0; i<r.length; i++){
+      const col = pal[r[i]];
+      if (col){ x.fillStyle = col; x.fillRect(i, j, 1, 1); }
+    }
+  }
+  return c;
+}
+
+/* Палитра персонажа: коричневые объёмные волосы, белые очки (как в концепте) */
+const P_SKIN = { f:'#e6c39a', s:'#bd8f63', H:'#4a3018', A:'#6e4a26',
+                 G:'#e8e6e0', l:'#23282f', L:'#9fd0ff', m:'#8a5040',
+                 M:'#3a2030', w:'#fff', e:'#d8b288', b:'#3a2410' };
+
+/* Голова обычная (волосы пышные) */
+const HEAD_N = spr([
+"....AHHAAHHA.....",
+"..AHHHHAHHHHHA...",
+".AHHAHHHHHAHHHA..",
+".HHHHHAHHHHHHHH..",
+".AHHHHHHHAHHHHA..",
+".HHfffffffffHH...",
+"eHfffffffffffHe..",
+"effffffffffffe...",
+".GGGGGG.f.GGGGG..",
+".GllLlG.f.GlLllG.",
+".GllllG.f.GllllG.",
+".GGGGGGsfsGGGGG..",
+"..ffffsfffsffff..",
+"..fffffsssffff...",
+"...fffmmmmfff....",
+"....ffffffff.....",
+], P_SKIN);
+
+/* Сонная: полуприкрытые глаза */
+const HEAD_T = spr([
+"....AHHAAHHA.....",
+"..AHHHHAHHHHHA...",
+".AHHAHHHHHAHHHA..",
+".HHHHHAHHHHHHHH..",
+".AHHHHHHHAHHHHA..",
+".HHfffffffffHH...",
+"eHfffffffffffHe..",
+"effffffffffffe...",
+".GGGGGG.f.GGGGG..",
+".GllllG.f.GllllG.",
+".GssssG.f.GssssG.",
+".GGGGGGsfsGGGGG..",
+"..ffffsfffsffff..",
+"..fffffsssffff...",
+"...ffffmmfff.....",
+"....ffffffff.....",
+], P_SKIN);
+
+/* Паника: брови, открытый рот */
+const HEAD_S = spr([
+"....AHHAAHHA.....",
+"..AHHHHAHHHHHA...",
+".AHHAHHHHHAHHHA..",
+".HHHbHAHHHbHHHH..",
+".AHbHHHHHHHbHHA..",
+".HHfffffffffHH...",
+"eHfffffffffffHe..",
+"effffffffffffe...",
+".GGGGGG.f.GGGGG..",
+".GwwllG.f.GllwwG.",
+".GllllG.f.GllllG.",
+".GGGGGGsfsGGGGG..",
+"..ffffsfffsffff..",
+"..ffffsMMMsfff...",
+"...fffMMMMMff....",
+"....ffffffff.....",
+], P_SKIN);
+
+/* Голова на столе (сон) */
+const HEAD_Z = spr([
+"......AHHAHHAHA.....",
+"...AHHHHHAHHHHHHA...",
+".AHHHAHHHHHHAHHHHA..",
+".HHHHffffffffffHHH..",
+".HHfffffffffffffHH..",
+".HHffGGGGGffffffeH..",
+".HffflsssGffffffe...",
+".Hffffffffffsmff....",
+"..ffffffffffsMw.....",
+"...ssffffffffss.....",
+".....ssssssss.......",
+], P_SKIN);
+
+/* Торс: тёмный свитер + шея (стыкуется с головой) */
+const P_BODY = { C:'#28232b', c:'#1c181f', f:'#e6c39a', d:'#3a3340' };
+const TORSO = spr([
+"............fff.............",
+"............fff.............",
+".........CCCfffCCC..........",
+".......CCCCCfffCCCCC........",
+".....CCCCCCCCCCCCCCCCC......",
+"....CCCCCCCCCCCCCCCCCCC.....",
+"...dCCCCCCCCCCCCCCCCCCCd....",
+"..dCCCCCCCCCCCCCCCCCCCCCd...",
+"..dCCCCCCCCCCCCCCCCCCCCCd...",
+".ddCCCCCCCCCCCCCCCCCCCCCdd..",
+".dCCCCCCCCCCCCCCCCCCCCCCCd..",
+".dCCCCCCCCCCCCCCCCCCCCCCCd..",
+"dCCCCCCCCCCCCCCCCCCCCCCCCCd.",
+"dCCCCCCCCCCCCCCCCCCCCCCCCCd.",
+], P_BODY);
+
+/* Руки на голове (паника) */
+const HANDS = spr([
+"Cff....ffC",
+"Cfff..fffC",
+".Cf....fC.",
+], { C:'#28232b', f:'#e6c39a' });
+
+/* Ноутбук: серый, белое яблоко, стоит НА столе */
+const LAPTOP = spr([
+"..hhhhhhhhhhhhhhhhhhhhhhhhhhhh..",
+".hDDDDDDDDDDDDDDDDDDDDDDDDDDDDh.",
+".hDDDDDDDDDDDDDDDDDDDDDDDDDDDDh.",
+".hDDDDDDDDDDDDDDDDDDDDDDDDDDDDh.",
+".hDDDDDDDDDDDDDwDDDDDDDDDDDDDDh.",
+".hDDDDDDDDDDDDwwwDDDDDDDDDDDDDh.",
+".hDDDDDDDDDDDwwwwwDDDDDDDDDDDDh.",
+".hDDDDDDDDDDDwwwwwDDDDDDDDDDDDh.",
+".hDDDDDDDDDDDDwwwDDDDDDDDDDDDDh.",
+".hDDDDDDDDDDDDDDDDDDDDDDDDDDDDh.",
+".hDDDDDDDDDDDDDDDDDDDDDDDDDDDDh.",
+".hDDDDDDDDDDDDDDDDDDDDDDDDDDDDh.",
+"..qqqqqqqqqqqqqqqqqqqqqqqqqqqq..",
+".bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.",
+], { h:'#b8bdc6', D:'#8a8f98', q:'#6e747e', b:'#9aa0aa', w:'#fff' });
+
+/* Лампа */
+const LAMP = spr([
+"..MMMMMM....",
+".MWWWWWWM...",
+".MWWYYWWM...",
+"..MWWWWM....",
+"...M..M.....",
+"....mm......",
+"....mm......",
+"....mm......",
+"...mm.......",
+"...mm.......",
+"..mm........",
+"..mm........",
+".MMMMMM.....",
+".MMMMMM.....",
+], { M:'#4a4234', m:'#383226', W:'#ffd27a', Y:'#fff4c2' });
+
+/* Сердечко (жизни) */
+const HEART_MAP = [
+".RR...RR.",
+"RRRRRRRRR",
+"RRRRRRRRR",
+"RrRRRRRrR",
+".RRRRRRR.",
+"..RRRRR..",
+"...RRR...",
+"....R....",
+];
+const HEART_F = spr(HEART_MAP, { R:'#f0788a', r:'#c84a5e' });
+const HEART_E = spr(HEART_MAP, { R:'#4a3226', r:'#3a2418' });
+
+/* Банка */
+const CAN_MAP = [
+".....ttt.....",
+".TTTTTTTTTTT.",
+".TqqqqqqqqqT.",
+".dBBBBBBBBhB.",
+".dBBBBBBBBhB.",
+".dBBBBBBBBhB.",
+".dBBBBBBBBhB.",
+".dLLLLLLLLhL.",
+".dLLLLLLLLhL.",
+".dLLLLLLLLhL.",
+".dLLLLLLLLhL.",
+".dLLLLLLLLhL.",
+".dBBBBBBBBhB.",
+".dBBBBBBBBhB.",
+".dBBBBBBBBhB.",
+".dBBBBBBBBhB.",
+".TTTTTTTTTTT.",
+"..TTTTTTTTT..",
+];
+const CAN_COMMON = { T:'#cfd6e0', q:'#9aa4b4', t:'#aab2c0' };
+const CRUSH_MAP = [
+".BBhBBBB.",
+"BBBhBBBBB",
+".TBBhBBT.",
+];
+
+const BRANDS = [
+  { id:'nrg', name:'ENERGY', lines:['ENERGY'], energy:22, p:0.50,
+    pal:{ B:'#18a14a', d:'#0c6e31', h:'#5fd98a', L:'#0e1216' }, txt:'#5fd98a', col:'#5fd98a' },
+  { id:'adr', name:'АДРЕНАЛИНЧИК', lines:['АДРЕНА','ЛИНЧИК'], energy:18, p:0.35,
+    pal:{ B:'#6f2bd6', d:'#4a1c93', h:'#a86bff', L:'#ffd23e' }, txt:'#3a1b66', col:'#a86bff' },
+  { id:'red', name:'REDCOOL', lines:['RED','COOL'], energy:45, p:0.15,
+    pal:{ B:'#d4242e', d:'#931119', h:'#ff8a72', L:'#f2f0e8' }, txt:'#c01820', col:'#ff8a72' },
+];
+document.fonts && document.fonts.ready.then(()=>{ buildCans(); });
+
+function buildCans(){
+  for (const b of BRANDS){
+    const pal = Object.assign({}, CAN_COMMON, b.pal);
+    b.small = spr(CAN_MAP, pal);
+    const big = document.createElement('canvas');
+    big.width = 26; big.height = 36;
+    const g = big.getContext('2d');
+    g.imageSmoothingEnabled = false;
+    g.drawImage(b.small, 0, 0, 26, 36);
+    g.fillStyle = b.txt; g.textAlign = 'center'; g.textBaseline = 'middle';
+    const n = b.lines.length;
+    for (let i=0; i<n; i++){
+      let fs = 5;
+      g.font = fs + 'px "Press Start 2P", monospace';
+      while (fs > 3 && g.measureText(b.lines[i]).width > 18){
+        fs -= 0.5; g.font = fs + 'px "Press Start 2P", monospace';
+      }
+      g.fillText(b.lines[i], 13, 16 + (i - (n-1)/2) * 6);
+    }
+    b.big = big;
+    b.crush = spr(CRUSH_MAP, pal);
+  }
+}
+buildCans();
+
+function pickBrand(){
+  const r = Math.random(); let a = 0;
+  for (const b of BRANDS){ a += b.p; if (r <= a) return b; }
+  return BRANDS[0];
+}
+
+/* ---------- Звук ---------- */
+const AU = {
+  ctx:null, master:null, muted:false, musicOn:false,
+  init(){
+    if (this.ctx) { this.ctx.resume && this.ctx.resume(); return; }
+    try {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.9;
+      this.master.connect(this.ctx.destination);
+    } catch(e){}
+  },
+  g(v, t0, a, d){
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.linearRampToValueAtTime(v, t0 + a);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + a + d);
+    g.connect(this.master);
+    return g;
+  },
+  noiseBuf(){
+    if (this._nb) return this._nb;
+    const b = this.ctx.createBuffer(1, this.ctx.sampleRate, this.ctx.sampleRate);
+    const d = b.getChannelData(0);
+    for (let i=0;i<d.length;i++) d[i] = Math.random()*2-1;
+    return this._nb = b;
+  },
+  noise(t0, dur, type, freq, vol){
+    if (!this.ctx || this.muted) return;
+    const s = this.ctx.createBufferSource(); s.buffer = this.noiseBuf(); s.loop = true;
+    const f = this.ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq;
+    const g = this.g(vol, t0, 0.01, dur);
+    s.connect(f); f.connect(g);
+    s.start(t0); s.stop(t0 + dur + 0.05);
+    return f;
+  },
+  tone(t0, dur, type, f0, f1, vol){
+    if (!this.ctx || this.muted) return;
+    const o = this.ctx.createOscillator(); o.type = type;
+    o.frequency.setValueAtTime(f0, t0);
+    if (f1) o.frequency.exponentialRampToValueAtTime(Math.max(f1,1), t0 + dur);
+    const g = this.g(vol, t0, 0.01, dur);
+    o.connect(g); o.start(t0); o.stop(t0 + dur + 0.05);
+  },
+  now(){ return this.ctx ? this.ctx.currentTime : 0; },
+  whoosh(){ const t=this.now(); const f=this.noise(t,0.22,'bandpass',400,0.25);
+            if(f) f.frequency.exponentialRampToValueAtTime(1800, t+0.2); },
+  land(){ const t=this.now(); this.tone(t,0.08,'triangle',170,120,0.25);
+          this.noise(t,0.05,'highpass',2500,0.15); },
+  fizz(){ const t=this.now(); this.noise(t,0.5,'highpass',3200,0.18);
+          for(let i=0;i<3;i++) this.tone(t+0.15+i*0.14,0.1,'sine',300,150,0.12); },
+  ding(){ const t=this.now(); this.tone(t,0.12,'triangle',660,660,0.2);
+          this.tone(t+0.1,0.2,'triangle',990,990,0.18); },
+  win(){ const t=this.now();
+         [523,659,784,1047].forEach((f,i)=>this.tone(t+i*0.13,0.22,'triangle',f,f,0.2)); },
+  pop(){ const t=this.now(); this.noise(t,0.32,'lowpass',650,0.5);
+         this.tone(t,0.25,'sine',240,55,0.4); },
+  sparks(){ const t=this.now();
+            for(let i=0;i<6;i++) this.noise(t+Math.random()*0.7,0.03,'highpass',4200,0.2); },
+  snore(){ const t=this.now();
+           this.tone(t,0.7,'sawtooth',75,60,0.12); this.tone(t+1.1,0.7,'sawtooth',75,60,0.1); },
+  warn(){ const t=this.now(); this.tone(t,0.06,'square',880,880,0.07);
+          this.tone(t+0.12,0.06,'square',880,880,0.07); },
+  tap(){ this.tone(this.now(),0.05,'triangle',440,440,0.15); },
+  startMusic(){
+    if (!this.ctx || this.musicOn) return;
+    this.musicOn = true;
+    const bpm = 76, beat = 60/bpm;
+    const m2f = m => 440 * Math.pow(2, (m-69)/12);
+    const CH = [ [57,60,64,67], [53,57,60,65], [60,64,67,71], [55,59,62,66] ];
+    const BS = [45, 41, 48, 43];
+    let bar = 0, nextT = this.now() + 0.1;
+    const cr = this.ctx.createBufferSource(); cr.buffer = this.noiseBuf(); cr.loop = true;
+    const cf = this.ctx.createBiquadFilter(); cf.type='highpass'; cf.frequency.value = 5000;
+    const cg = this.ctx.createGain(); cg.gain.value = 0.012;
+    cr.connect(cf); cf.connect(cg); cg.connect(this.master); cr.start();
+    this._crackle = cg;
+    this._mtimer = setInterval(() => {
+      if (this.muted) return;
+      while (nextT < this.now() + 0.3) {
+        const t = nextT, ch = CH[bar % 4];
+        for (const m of ch) {
+          const o = this.ctx.createOscillator(); o.type = 'triangle';
+          o.frequency.value = m2f(m); o.detune.value = (Math.random()*8-4);
+          const f = this.ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.value = 1100;
+          const g = this.ctx.createGain();
+          g.gain.setValueAtTime(0.0001, t);
+          g.gain.linearRampToValueAtTime(0.035, t + 0.5);
+          g.gain.linearRampToValueAtTime(0.0001, t + beat*4);
+          o.connect(f); f.connect(g); g.connect(this.master);
+          o.start(t); o.stop(t + beat*4 + 0.1);
+        }
+        this.tone(t, beat*1.8, 'sine', m2f(BS[bar%4]), m2f(BS[bar%4]), 0.09);
+        this.tone(t + beat*2, beat*1.6, 'sine', m2f(BS[bar%4]-12)*2, null, 0.07);
+        this.tone(t, 0.12, 'sine', 110, 45, 0.22);
+        this.tone(t + beat*2, 0.12, 'sine', 110, 45, 0.2);
+        for (let i=0;i<8;i++) if (Math.random() > 0.35)
+          this.noise(t + i*beat/2, 0.025, 'highpass', 6000, 0.035);
+        bar++; nextT += beat*4;
+      }
+    }, 120);
+  },
+  setMute(m){
+    this.muted = m;
+    if (this._crackle) this._crackle.gain.value = m ? 0 : 0.012;
+  }
+};
+
+/* ---------- Этапы ---------- */
+const STAGES = [
+  { name:'ЛАБА 1', coef:3,   drain:1.8, drink:1.15, gap:0.70, mul:1.0  },
+  { name:'ЛАБА 2', coef:2,   drain:2.5, drink:0.95, gap:0.55, mul:1.15 },
+  { name:'ЛАБА 3', coef:1.5, drain:3.2, drink:0.80, gap:0.45, mul:1.35 },
+  { name:'КУРСАЧ', coef:1,   drain:4.0, drink:0.65, gap:0.35, mul:1.55 },
+];
+const PROG_BASE = 8;   // % прогресса за банку (умножается на coef этапа)
+const WIN_N = 30;      // порог банок для «здоровой» концовки
+const PHRASES = ['ФУХ...', 'ТИШЕ, ТИШЕ...', 'ЖИВЁМ, ЖИВЁМ...', 'СПОКОЙНО...'];
+
+/* ---------- Ввод ---------- */
+const swipe = { active:false, pts:[] };
+let touchCtl = 0;
+
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (G.state === 'balancing' && !Tilt.fresh()) {
+    touchCtl = clamp((e.clientX - window.innerWidth/2) / (window.innerWidth/2) * 1.6, -1, 1);
+    return;
+  }
+  swipe.active = true;
+  swipe.pts = [{ t: performance.now(), x: e.clientX, y: e.clientY }];
+}, { passive:false });
+
+cv.addEventListener('pointermove', e => {
+  e.preventDefault();
+  if (G.state === 'balancing' && !Tilt.fresh()) {
+    touchCtl = clamp((e.clientX - window.innerWidth/2) / (window.innerWidth/2) * 1.6, -1, 1);
+    return;
+  }
+  if (!swipe.active) return;
+  swipe.pts.push({ t: performance.now(), x: e.clientX, y: e.clientY });
+  if (swipe.pts.length > 24) swipe.pts.shift();
+}, { passive:false });
+
+cv.addEventListener('pointerup', e => {
+  e.preventDefault();
+  touchCtl = 0;
+  if (!swipe.active) return;
+  swipe.active = false;
+  if (G.state !== 'waiting') return;
+  const pts = swipe.pts;
+  if (pts.length < 2) return;
+  const last = { t: performance.now(), x: e.clientX, y: e.clientY };
+  let i0 = pts.length - 1;
+  while (i0 > 0 && last.t - pts[i0].t < 90) i0--;
+  const p0 = pts[i0];
+  const dt = Math.max(last.t - p0.t, 1);
+  const vx = (last.x - p0.x) / dt;
+  const vy = (last.y - p0.y) / dt;
+  const dy = last.y - pts[0].y;
+  if (vy < -0.35 && dy < -24) throwCan(vx, vy);
+}, { passive:false });
+
+cv.addEventListener('pointercancel', () => { swipe.active = false; touchCtl = 0; });
+
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+
+/* ---------- Частицы ---------- */
+const parts = [], floats = [], splats = [], drips = [];
+
+function boom(x, y){
+  for (let i=0; i<30; i++){
+    const a = Math.random()*Math.PI - Math.PI;
+    const sp = 30 + Math.random()*75;
+    parts.push({ x, y, vx: Math.cos(a)*sp*0.8, vy: -Math.abs(Math.sin(a))*sp - 20,
+      g: 170, life: 0.55 + Math.random()*0.6, t: 0,
+      col: ['#fffbe8','#ffeebb','#ffe9a8','#fff'][i%4], r: 1 + Math.random()*2.2 });
+  }
+  splats.push({ x, w: 16 + Math.random()*8 });
+  for (let i=0; i<3; i++)
+    drips.push({ x: x - 6 + Math.random()*12, y: L.deskFront, len: 0, max: 8 + Math.random()*12 });
+}
+function sparkBurst(x, y){
+  for (let i=0; i<5; i++)
+    parts.push({ x: x + Math.random()*8-4, y, vx: Math.random()*60-30, vy: -20-Math.random()*60,
+      g: 130, life: 0.3+Math.random()*0.4, t:0, col: ['#ffd23e','#ff9a3e','#fff4c2'][i%3], r:1 });
+}
+function smoke(x, y){
+  parts.push({ x: x+Math.random()*10-5, y, vx: Math.random()*8-4, vy: -8-Math.random()*8,
+    g: -6, life: 1.6, t:0, col:'rgba(120,120,130,0.5)', r: 2+Math.random()*2 });
+}
+function addFloat(x, y, txt, col, size){
+  floats.push({ x, y, txt, col, t:0, life: 1.4, size: size||6 });
+}
+
+/* ---------- Состояние ---------- */
+const G = {
+  state: 'start',
+  t: 0,
+  energy: 100,
+  score: 0,        // банок всего за игру
+  hi: 0,
+  lives: 3,
+  stage: 0,        // 0..3
+  prog: 0,         // прогресс текущего этапа 0..100
+  freeze: 0,       // заморозка шкалы (сек)
+  can: null,
+  drunk: [],
+  sparking: false,
+  banner: null,
+  shake: 0,
+  thrown: false,
+  balancedOnce: false,
+  lowBeep: 0,
+};
+
+function totalFrac(){ return clamp((G.stage + G.prog/100) / 4, 0, 1); }
+function clockStr(){
+  const m = 180 + Math.round(totalFrac() * 350); // 03:00 -> 08:50
+  const hh = Math.floor(m/60), mm = m%60;
+  return (hh<10?'0':'')+hh+':'+(mm<10?'0':'')+mm;
+}
+
+function loadHi(){
+  try {
+    if (tg && tg.CloudStorage) {
+      tg.CloudStorage.getItem('hi', (e,v) => { G.hi = parseInt(v)||0; });
+      return;
+    }
+  } catch(e){}
+  try { G.hi = parseInt(localStorage.getItem('hi'))||0; } catch(e){}
+}
+function saveHi(){
+  try { if (tg && tg.CloudStorage) tg.CloudStorage.setItem('hi', String(G.hi), ()=>{}); } catch(e){}
+  try { localStorage.setItem('hi', String(G.hi)); } catch(e){}
+}
+loadHi();
+
+function showBanner(txt, sub, col, life){
+  G.banner = { txt, sub: sub||'', col: col||'#ffd23e', t: 0, life: life||2.2 };
+}
+
+function resetGame(quick){
+  G.state = 'intro'; G.t = quick ? 1.2 : 0;
+  G.energy = 100; G.score = 0; G.lives = 3;
+  G.stage = 0; G.prog = 0; G.freeze = 0;
+  G.can = null; G.drunk = [];
+  G.sparking = false; G.banner = null;
+  G.shake = 0; G.lowBeep = 0;
+  parts.length = 0; floats.length = 0; splats.length = 0; drips.length = 0;
+  if (!quick) showBanner('ОБЩАГА. 03:00', 'впереди 3 лабы и курсач', '#d8cfb8', 2.4);
+}
+
+function spawnCan(){
+  if (G.state === 'over') return;
+  const b = pickBrand();
+  G.can = {
+    brand: b, x: L.spawnX, y: L.spawnY, rot: 0, scale: 2,
+    fx0:0, fy0:0, fx1:0, fy1:0, apex:0, fT:0, fDur:0.62, spin:0, jit:0,
+    th: 0, om: 0, stable: 0, wobble: 0, wasBalanced: false,
+  };
+  G.state = 'waiting'; G.t = 0;
+}
+
+function throwCan(vx, vy){
+  const c = G.can; if (!c) return;
+  const sp = Math.hypot(vx, vy);
+  c.fx0 = c.x; c.fy0 = c.y;
+  c.fx1 = clamp(c.x + vx * 230 / SC, L.deskL + 9, L.deskR - 9);
+  c.fy1 = L.landY;
+  c.apex = Math.min(c.fy0, c.fy1) - (46 + Math.min(40, sp*18));
+  c.fT = 0; c.fDur = 0.62;
+  const spins = 1 + Math.min(2, Math.round(sp * 0.55));
+  c.spin = (vx >= 0 ? 1 : -1) * spins * Math.PI * 2;
+  c.jit = (Math.random()*0.24 - 0.12);
+  c.wobble = clamp((sp - 0.85) * 0.95, 0, 1.7);
+  // 25% шанс шаткой банки даже при слабом броске
+  if (c.wobble < 0.16 && Math.random() < 0.25) c.wobble = 0.25 + Math.random()*0.3;
+  G.state = 'flying'; G.t = 0; G.thrown = true;
+  Hap.imp('light'); AU.whoosh();
+}
+
+/* ---------- Update ---------- */
+let lastT = 0, balHapT = 0;
+
+function update(dt){
+  G.t += dt;
+  if (G.banner) { G.banner.t += dt; if (G.banner.t > G.banner.life) G.banner = null; }
+  if (G.shake > 0) G.shake -= dt;
+  if (G.freeze > 0) G.freeze -= dt;
+
+  for (let i = parts.length-1; i >= 0; i--){
+    const p = parts[i];
+    p.t += dt; p.x += p.vx*dt; p.y += p.vy*dt; p.vy += p.g*dt;
+    if (p.t > p.life) parts.splice(i,1);
+  }
+  for (let i = floats.length-1; i >= 0; i--){
+    const f = floats[i]; f.t += dt; f.y -= 12*dt;
+    if (f.t > f.life) floats.splice(i,1);
+  }
+  for (const d of drips) d.len = Math.min(d.max, d.len + 8*dt);
+
+  const playing = ['waiting','flying','balancing','stabilize','drinking'].includes(G.state);
+
+  if (playing){
+    let drain = STAGES[G.stage].drain;
+    if (G.state === 'balancing') drain *= 0.35;  // во время баланса шкала медленнее
+    if (G.freeze > 0) drain = 0;                  // заморозка после удачного баланса
+    G.energy -= drain * dt;
+    if (G.energy <= 25 && G.energy > 0){
+      G.lowBeep += dt;
+      if (G.lowBeep > 1){ G.lowBeep = 0; AU.warn(); Hap.sel(); }
+    }
+    if (G.energy <= 0 && G.state !== 'drinking'){
+      G.energy = 0;
+      G.state = 'sleepfall'; G.t = 0;
+      Hap.notif('warning'); AU.snore();
+      return;
+    }
+    if (G.sparking && Math.random() < dt*6) sparkBurst(L.cx, L.deskY - 10);
+  }
+
+  switch (G.state){
+    case 'intro':
+      if (G.t > 2.2){
+        showBanner(STAGES[0].name + '. ПОЕХАЛИ!', 'кидай банку', '#ffd23e', 1.8);
+        spawnCan();
+      }
+      break;
+
+    case 'flying': {
+      const c = G.can;
+      c.fT += dt;
+      const p = clamp(c.fT / c.fDur, 0, 1);
+      c.x = lerp(c.fx0, c.fx1, p);
+      const u = 1 - p;
+      c.y = u*u*c.fy0 + 2*u*p*c.apex + p*p*c.fy1;
+      const e = 1 - Math.pow(1-p, 3);
+      c.rot = c.spin * e + c.jit * p;
+      c.scale = lerp(2, 1, p);
+      if (p >= 1){
+        c.rot = c.jit; c.y = L.landY; c.scale = 1;
+        Hap.imp('medium'); AU.land();
+        if (c.wobble < 0.16){
+          c.th = c.jit; c.om = 0;
+          G.state = 'stabilize'; G.t = 0;
+        } else {
+          c.th = c.jit;
+          c.om = (Math.random() < 0.5 ? -1 : 1) * (0.5 + c.wobble * 0.7);
+          c.stable = 0;
+          c.wasBalanced = true;
+          G.state = 'balancing'; G.t = 0;
+          if (!G.balancedOnce){
+            showBanner(Tilt.fresh() ? 'НАКЛОНЯЙ ТЕЛЕФОН!' : 'ДЕРЖИ ПАЛЬЦЕМ ← →',
+                       'не дай банке упасть', '#9fd0ff', 2);
+            G.balancedOnce = true;
+          }
+        }
+      }
+      break;
+    }
+
+    case 'balancing': {
+      const c = G.can;
+      // мягкая физика: слабее гравитация и управление, сильнее трение
+      const ctl = Tilt.fresh() ? clamp(Tilt.val / 30, -1, 1) : touchCtl;
+      c.om += (1.9 * Math.sin(c.th) + 4.5 * ctl) * dt;
+      c.om -= c.om * 1.1 * dt;
+      c.th += c.om * dt;
+      c.rot = c.th;
+      if (Math.abs(c.th) > 0.55 && performance.now() - balHapT > 220){
+        balHapT = performance.now(); Hap.imp('rigid');
+      }
+      if (Math.abs(c.th) > 1.15){
+        G.state = 'fall'; G.t = 0;
+        break;
+      }
+      // зелёная зона: достаточно 0.25 сек
+      if (Math.abs(c.th) < 0.16 && Math.abs(c.om) < 0.4){
+        c.stable += dt;
+        if (c.stable > 0.25 && G.t > 0.6){
+          G.state = 'stabilize'; G.t = 0;
+          if (c.wasBalanced){
+            G.freeze = 4; // шкала стоит 4 секунды
+            addFloat(L.cx + 22, L.headY - 4, PHRASES[Math.floor(Math.random()*PHRASES.length)], '#9fd0ff', 6);
+          }
+        }
+      } else c.stable = 0;
+      break;
+    }
+
+    case 'stabilize': {
+      const c = G.can;
+      c.rot = lerp(c.rot, 0, Math.min(1, dt*10));
+      if (G.t > 0.3) startDrink();
+      break;
+    }
+
+    case 'drinking': {
+      const c = G.can;
+      const ds = STAGES[G.stage].drink;
+      const p = clamp(G.t / (ds * 0.4), 0, 1);
+      c.x = lerp(c.dx0, L.headX + 7, p);
+      c.y = lerp(c.dy0, L.deskY - 22, p);
+      c.rot = lerp(0, -1.0, p);
+      if (G.t > ds){
+        G.drunk.push(G.can.brand);
+        G.can = null;
+        if (G.prog >= 100){ stageDone(); break; }
+        G.state = 'waiting'; G.t = 0;
+        const gap = STAGES[G.stage].gap * 1000;
+        setTimeout(() => { if (G.state === 'waiting' && !G.can) spawnCan(); }, gap);
+      }
+      break;
+    }
+
+    case 'stagedone':
+      if (G.t > 1.8){
+        G.stage++;
+        G.prog = 0;
+        G.energy = 100; // полное восстановление на новом этапе
+        showBanner(STAGES[G.stage].name, 'погнали дальше!', '#ffd23e', 1.8);
+        spawnCan();
+      }
+      break;
+
+    case 'fall': {
+      const c = G.can;
+      const dir = Math.sign(c.th) || 1;
+      c.rot += dir * 7 * dt;
+      c.y += 26 * dt;
+      if (G.t > 0.32){
+        boom(c.x, L.landY);
+        G.can = null;
+        G.lives--;
+        G.shake = 0.5;
+        Hap.notif('error'); Hap.imp('heavy'); AU.pop();
+        if (G.lives > 0){
+          // паника без искр, игра продолжается
+          G.state = 'lifelost'; G.t = 0;
+          showBanner('БАНКА УПАЛА!', 'осталось жизней: ' + G.lives, '#ff7a5e', 1.8);
+        } else {
+          // третья — ноутбук искрит, конец
+          G.sparking = true;
+          AU.sparks();
+          for (let i=0;i<4;i++) setTimeout(()=>smoke(L.cx, L.deskY-12), i*350);
+          G.state = 'fallsad'; G.t = 0;
+        }
+      }
+      break;
+    }
+
+    case 'lifelost':
+      if (G.t > 1.5) spawnCan();
+      break;
+
+    case 'fallsad':
+      if (G.t > 1.7) gameOver('fall');
+      break;
+
+    case 'sleepfall':
+      if (G.t > 1.4) gameOver('sleep');
+      break;
+  }
+}
+
+function startDrink(){
+  const c = G.can;
+  c.dx0 = c.x; c.dy0 = c.y;
+  G.state = 'drinking'; G.t = 0;
+  AU.fizz();
+  const st = STAGES[G.stage];
+  G.energy = Math.min(100, G.energy + c.brand.energy * st.mul);
+  // прогресс: банка * коэффициент этапа, x1.5 за балансировку
+  let pr = PROG_BASE * st.coef;
+  if (c.wasBalanced) pr *= 1.5;
+  G.prog = Math.min(100, G.prog + pr);
+  G.score++;
+  if (G.score > G.hi){ G.hi = G.score; saveHi(); }
+  addFloat(L.headX + 16, L.headY - 2, '+' + Math.round(c.brand.energy * st.mul) + '⚡', '#5fd98a', 6);
+  Hap.notif('success'); AU.ding();
+}
+
+function stageDone(){
+  if (G.stage >= 3){ gameOver('win'); return; }
+  G.state = 'stagedone'; G.t = 0;
+  showBanner(STAGES[G.stage].name + ' СДАНА!', 'энергия восстановлена', '#5fd98a', 1.8);
+  Hap.notif('success'); AU.win();
+}
+
+function gameOver(reason){
+  G.state = 'over';
+  const ttl = document.getElementById('overTitle');
+  const txt = document.getElementById('overText');
+  if (reason === 'win'){
+    ttl.textContent = 'ИГРА ПРОЙДЕНА!';
+    ttl.style.color = '#5fd98a';
+    txt.innerHTML = G.score <= WIN_N
+      ? 'Работяга в последний момент сдал все работы — и его не отчислили!'
+      : 'Студент сдал все работы, но, к сожалению, вскоре скончался от сердечного приступа...<br><br>Не злоупотребляйте энергетиками!';
+    AU.win(); Hap.notif('success');
+  } else if (reason === 'fall'){
+    ttl.textContent = 'НОУТБУК ЗАЛИТ';
+    ttl.style.color = '#ffd23e';
+    txt.innerHTML = 'Третья банка стала последней.<br>Курсач не сохранился.';
+  } else {
+    ttl.textContent = 'СТУДЕНТ УСНУЛ';
+    ttl.style.color = '#ffd23e';
+    txt.innerHTML = 'Проспал дедлайн.<br>Пересдача в августе.';
+  }
+  document.getElementById('ovScore').textContent = G.score;
+  document.getElementById('ovClock').textContent = clockStr();
+  const rec = document.getElementById('ovRec');
+  if (G.score >= G.hi && G.score > 0){
+    rec.textContent = 'НОВЫЙ РЕКОРД: ' + G.hi + '!';
+    rec.className = 'newrec';
+  } else {
+    rec.textContent = 'Рекорд: ' + G.hi;
+    rec.className = 'record';
+  }
+  document.getElementById('over').classList.remove('hidden');
+}
+
+/* ---------- Рендер ---------- */
+function rect(x,y,w,h,col){ cx2.fillStyle = col; cx2.fillRect(x,y,w,h); }
+
+/* фиксированные звёзды (позиции стабильны между кадрами) */
+const STARS = [];
+for (let i=0;i<16;i++) STARS.push({ fx: Math.random(), fy: Math.random()*0.7, s: 1+Math.random()*2 });
+
+function drawRoom(){
+  // тёмно-жёлтая комната
+  rect(0, 0, W, L.deskY, '#443522');
+  rect(0, 0, W, ST + 26, '#382b1a'); // потолочная тень
+  rect(0, L.deskY-2, W, 2, '#332817');
+  rect(0, L.deskY, W, H - L.deskY, '#2a2014');
+  for (let y = L.deskBottom + 6; y < H; y += 9) rect(0, y, W, 1, '#332817');
+
+  // БОЛЬШОЕ ОКНО: ночь, звёзды, движущаяся луна
+  const wx = L.winX, wy = L.winY, ww = L.winW, wh = L.winH;
+  rect(wx-3, wy-3, ww+6, wh+6, '#5a4632');
+  rect(wx-1, wy-1, ww+2, wh+2, '#332817');
+  rect(wx, wy, ww, wh, '#0d1226');
+  // звёзды с мерцанием
+  const tNow = performance.now()/1000;
+  for (let i=0;i<STARS.length;i++){
+    const s = STARS[i];
+    const a = 0.4 + 0.6 * Math.abs(Math.sin(tNow*0.7 + i*1.7));
+    cx2.fillStyle = 'rgba(220,228,255,' + a.toFixed(2) + ')';
+    cx2.fillRect(wx + 3 + Math.floor(s.fx*(ww-6)), wy + 2 + Math.floor(s.fy*(wh-14)), 1, 1);
+  }
+  // луна движется за ночь слева направо
+  const mf = totalFrac();
+  const mx = wx + 6 + Math.floor(mf * (ww - 20));
+  const my = wy + 8 + Math.floor(Math.sin(mf * Math.PI) * -3) + 3;
+  rect(mx, my, 6, 6, '#ffe9a8');
+  rect(mx+1, my+1, 4, 4, '#fff4cf');
+  rect(mx-1, my+2, 1, 2, '#ffe9a833');
+  // деревья-силуэты внизу окна
+  cx2.fillStyle = '#101a30';
+  for (let x = wx; x < wx+ww; x += 7){
+    const th = 4 + ((x*7)%5);
+    cx2.fillRect(x, wy+wh-th, 7, th);
+    cx2.fillRect(x+2, wy+wh-th-2, 3, 2);
+  }
+  // переплёт рамы
+  rect(wx + Math.floor(ww/2)-1, wy, 2, wh, '#5a4632');
+
+  // постер «ДЕДЛАЙН НЕ СПИТ» слева от окна
+  const px = 3, py = ST + 86;
+  if (L.winX > 18){
+    rect(px, py, 17, 24, '#d8d2c0');
+    rect(px, py, 17, 1, '#a89a80'); rect(px, py+23, 17, 1, '#a89a80');
+    cx2.textAlign = 'center'; cx2.textBaseline = 'top';
+    cx2.font = '3px "Press Start 2P", monospace';
+    cx2.fillStyle = '#3a2a18';
+    cx2.fillText('ДЕДЛАЙН', px+8, py+4);
+    cx2.fillText('НЕ СПИТ', px+8, py+10);
+    cx2.fillStyle = '#8a6a3a';
+    cx2.fillText(':)', px+8, py+17);
+  }
+
+  // растение слева на полу
+  const fx = 6, fy = L.deskBottom + 2;
+  rect(fx+1, fy+6, 8, 6, '#8a4a2a');
+  rect(fx+2, fy+12, 6, 1, '#6a3820');
+  rect(fx+3, fy, 2, 6, '#3f6b2a');
+  rect(fx, fy+2, 3, 3, '#5a8a3a');
+  rect(fx+6, fy+1, 3, 4, '#5a8a3a');
+  rect(fx+4, fy-2, 2, 3, '#4a7a30');
+}
+
+function drawDesk(){
+  rect(L.deskL, L.deskY, L.deskR - L.deskL, L.deskH, '#7a5530');
+  rect(L.deskL, L.deskY, L.deskR - L.deskL, 1, '#946a3e');
+  for (let x = L.deskL+8; x < L.deskR; x += 16) rect(x, L.deskY+1, 1, L.deskH-1, '#5f4023');
+  rect(L.deskL, L.deskFront, L.deskR - L.deskL, L.deskBottom - L.deskFront, '#5a3d20');
+  rect(L.deskL, L.deskFront, L.deskR - L.deskL, 1, '#7a5530');
+
+  for (const s of splats){
+    cx2.fillStyle = 'rgba(255,245,215,0.85)';
+    cx2.fillRect(s.x - s.w/2, L.deskY + 4, s.w, 4);
+    cx2.fillRect(s.x - s.w/3, L.deskY + 3, s.w*0.66, 1);
+  }
+  cx2.fillStyle = 'rgba(255,245,215,0.7)';
+  for (const d of drips) cx2.fillRect(d.x, d.y, 2, d.len);
+
+  // кружка слева
+  rect(L.deskL + 10, L.deskY - 5, 6, 7, '#9a3838');
+  rect(L.deskL + 16, L.deskY - 3, 2, 3, '#9a3838');
+  // дошик справа у лампы
+  rect(L.deskR - 36, L.deskY - 6, 8, 8, '#e0a23a');
+  rect(L.deskR - 36, L.deskY - 6, 8, 2, '#f2f0e8');
+
+  // стопки сданных работ: по одной за каждый пройденный этап
+  for (let i=0; i<G.stage; i++){
+    const sx = L.deskL + 20 + i*13;
+    rect(sx, L.deskY - 4, 11, 5, '#d8d2c0');
+    rect(sx+1, L.deskY - 6, 11, 5, '#cfc9b8');
+    rect(sx+2, L.deskY - 8, 11, 5, '#e2dccb');
+    cx2.fillStyle = '#8a8478';
+    cx2.fillRect(sx+4, L.deskY - 7, 6, 1);
+  }
+
+  // склад смятых банок: сетка 12x8 на полу
+  const cols = 12;
+  const startX = 4, startY = L.deskBottom + 4;
+  const stepX = Math.max(9, Math.floor((W - 8) / cols));
+  const maxRows = 8;
+  const n = Math.min(G.drunk.length, cols * maxRows);
+  for (let i=0; i<n; i++){
+    const b = G.drunk[i];
+    if (!b.crush) continue;
+    cx2.drawImage(b.crush, startX + (i % cols) * stepX, startY + Math.floor(i / cols) * 6);
+  }
+}
+
+function drawStudent(){
+  const breathe = Math.sin(performance.now()/420) * (G.state==='waiting' ? 1 : 0.5);
+  const bob = Math.round(breathe);
+
+  // кресло светлого оттенка (за спиной)
+  rect(L.cx - 18, L.deskY - 34, 36, 34, '#c9b896');
+  rect(L.cx - 18, L.deskY - 34, 36, 2, '#a8946e');
+  rect(L.cx - 18, L.deskY - 34, 2, 34, '#a8946e');
+  rect(L.cx + 16, L.deskY - 34, 2, 34, '#a8946e');
+  rect(L.cx - 20, L.deskY - 28, 2, 22, '#b8a47e'); // подлокотники
+  rect(L.cx + 18, L.deskY - 28, 2, 22, '#b8a47e');
+
+  if (G.state === 'sleepfall' || (G.state === 'over' && G.energy <= 0)){
+    const p = G.state === 'sleepfall' ? clamp(G.t/0.8, 0, 1) : 1;
+    cx2.drawImage(TORSO, L.cx - 14, L.deskY - 22 + Math.round(p*4));
+    if (p < 1){
+      const hy = lerp(L.headY, L.deskY - 11, p*p);
+      const hx = lerp(L.cx - 8, L.cx - 40, p);
+      cx2.drawImage(HEAD_T, Math.round(hx), Math.round(hy));
+    } else {
+      cx2.drawImage(HEAD_Z, L.cx - 46, L.deskY - 11);
+      cx2.fillStyle = '#9fd0ff';
+      const zt = performance.now()/600;
+      cx2.textAlign = 'left'; cx2.textBaseline = 'top';
+      cx2.font = '5px "Press Start 2P", monospace';
+      cx2.fillText('z', L.cx - 22, L.deskY - 18 - (zt%3)*4);
+      cx2.font = '7px "Press Start 2P", monospace';
+      cx2.fillText('Z', L.cx - 16, L.deskY - 26 - ((zt+1)%3)*4);
+    }
+    return;
+  }
+
+  // торс с шеей, голова сидит на плечах
+  cx2.drawImage(TORSO, L.cx - 14, L.deskY - 22 + bob);
+
+  let head = HEAD_N;
+  const panic = (G.state === 'fall' || G.state === 'fallsad' || G.state === 'lifelost');
+  if (panic) head = HEAD_S;
+  else if (G.energy < 35) head = HEAD_T;
+  else if (Math.floor(performance.now()/2600)%5 === 0 && Math.floor(performance.now()/130)%20 < 1) head = HEAD_T;
+
+  cx2.drawImage(head, L.cx - 8, L.headY + bob);
+
+  if (panic) cx2.drawImage(HANDS, L.cx - 5, L.headY - 2 + bob);
+
+  if (G.state === 'drinking' && G.can){
+    cx2.strokeStyle = '#28232b'; cx2.lineWidth = 3;
+    cx2.beginPath();
+    cx2.moveTo(L.cx + 11, L.deskY - 12);
+    cx2.lineTo(G.can.x - 2, G.can.y + 6);
+    cx2.stroke();
+  }
+}
+
+function drawLaptopAndLamp(){
+  // ноутбук стоит на столе (без «призрачного монитора»)
+  const lx = L.cx - 16, ly = L.deskY - 9;
+  cx2.drawImage(LAPTOP, lx, ly);
+  // искры при финальном падении
+  if (G.sparking && Math.random() < 0.3){
+    cx2.fillStyle = 'rgba(255,210,62,0.25)';
+    cx2.fillRect(lx + 4, ly - 4, 24, 8);
+  }
+  // лампа на правом краю
+  cx2.drawImage(LAMP, L.deskR - 18, L.deskY - 13);
+  cx2.fillStyle = 'rgba(255,210,122,0.09)';
+  cx2.beginPath();
+  cx2.moveTo(L.deskR - 13, L.deskY - 9);
+  cx2.lineTo(L.deskR - 34, L.deskY + 8);
+  cx2.lineTo(L.deskR - 2, L.deskY + 8);
+  cx2.closePath(); cx2.fill();
+}
+
+function drawCan(){
+  const c = G.can; if (!c) return;
+  const wait = (G.state === 'waiting');
+  const img = wait ? c.brand.big : c.brand.small;
+  if (!img) return;
+  const w = img.width * (wait ? 1 : c.scale);
+  const h = img.height * (wait ? 1 : c.scale);
+  cx2.save();
+  cx2.translate(c.x, c.y);
+  cx2.rotate(c.rot || 0);
+  cx2.drawImage(img, -w/2, -h, w, h);
+  cx2.restore();
+  if (wait || G.state === 'balancing' || G.state === 'stabilize'){
+    cx2.fillStyle = 'rgba(0,0,0,0.35)';
+    cx2.fillRect(c.x - 6, (wait ? c.y : L.landY) + 1, 12, 2);
+  }
+  if (G.state === 'balancing'){
+    // индикатор
+    const bx = c.x, by = L.landY - 32;
+    cx2.fillStyle = '#1b1408'; cx2.fillRect(bx - 17, by, 34, 5);
+    cx2.fillStyle = '#5a4a30'; cx2.fillRect(bx - 16, by+1, 32, 3);
+    cx2.fillStyle = '#5fd98a'; cx2.fillRect(bx - 4, by+1, 8, 3);
+    const m = clamp(c.th / 1.15, -1, 1) * 15;
+    cx2.fillStyle = Math.abs(c.th) > 0.55 ? '#ff4040' : '#ffd23e';
+    cx2.fillRect(bx + m - 1, by - 1, 3, 7);
+    // восклицательные знаки у падающей банки
+    if (Math.abs(c.th) > 0.5 && Math.floor(performance.now()/120)%2 === 0){
+      cx2.font = '7px "Press Start 2P", monospace';
+      cx2.fillStyle = '#ffd23e';
+      cx2.textAlign = 'center'; cx2.textBaseline = 'top';
+      const side = Math.sign(c.th) || 1;
+      cx2.fillText('!', c.x + side*14, L.landY - 24);
+      cx2.fillText('!', c.x + side*19, L.landY - 19);
+    }
+  }
+  if (G.state === 'fall' && Math.floor(performance.now()/100)%2 === 0){
+    cx2.font = '8px "Press Start 2P", monospace';
+    cx2.fillStyle = '#ffd23e';
+    cx2.textAlign = 'center'; cx2.textBaseline = 'top';
+    cx2.fillText('!', c.x - 12, c.y - 30);
+    cx2.fillText('!', c.x + 12, c.y - 26);
+  }
+}
+
+function drawHUD(){
+  cx2.textBaseline = 'top';
+
+  // === ВЕРХ: этап + прогресс-бар ===
+  cx2.textAlign = 'center';
+  cx2.font = '10px "Press Start 2P", monospace';
+  cx2.fillStyle = '#1b1408';
+  cx2.fillText(STAGES[G.stage].name, L.cx+1, ST + 5);
+  cx2.fillStyle = '#ffd23e';
+  cx2.fillText(STAGES[G.stage].name, L.cx, ST + 4);
+
+  const pbX = 24, pbW = W - 48, pbY = ST + 18, pbH = 7;
+  rect(pbX-1, pbY-1, pbW+2, pbH+2, '#1b1408');
+  rect(pbX, pbY, pbW, pbH, '#3a2c1a');
+  rect(pbX, pbY, Math.round(pbW * G.prog/100), pbH, '#ffd23e');
+  cx2.font = '4px "Press Start 2P", monospace';
+  cx2.fillStyle = '#1b1408';
+  cx2.fillText(Math.round(G.prog) + '%', L.cx, pbY + 2);
+
+  // строка: часы / банки / рекорд
+  cx2.font = '4px "Press Start 2P", monospace';
+  cx2.textAlign = 'left';
+  cx2.fillStyle = '#d8cfb8';
+  cx2.fillText(clockStr(), 5, ST + 30);
+  cx2.textAlign = 'right';
+  cx2.fillStyle = '#9a8f78';
+  cx2.fillText('БАНКИ ' + G.score + '  РЕКОРД ' + G.hi, W - 22, ST + 30);
+
+  // === ЖИЗНИ слева ===
+  for (let i=0; i<3; i++)
+    cx2.drawImage(i < G.lives ? HEART_F : HEART_E, 5, ST + 42 + i*12);
+
+  // === ШКАЛА ЭНЕРГИИ справа ===
+  const bx = L.barX, by = L.barY, bh = L.barH;
+  cx2.textAlign = 'left';
+  cx2.font = '6px "Press Start 2P", monospace';
+  cx2.fillStyle = '#ffd23e';
+  cx2.fillText('⚡', bx - 1, by - 10);
+  const frozen = G.freeze > 0;
+  rect(bx - 1, by - 1, 8, bh + 2, frozen ? '#5fc8e8' : '#1b1408');
+  rect(bx, by, 6, bh, '#2c2214');
+  const fillH = Math.round(bh * clamp(G.energy/100, 0, 1));
+  let col = '#5fd98a';
+  if (G.energy < 55) col = '#ffd23e';
+  if (G.energy < 25) col = '#ff4040';
+  const flash = G.energy < 25 && Math.floor(performance.now()/250)%2 === 0;
+  rect(bx, by + bh - fillH, 6, fillH, flash ? '#ff7a6e' : col);
+  for (let y = by + 5; y < by + bh; y += Math.max(5, Math.floor(bh/10)))
+    rect(bx, y, 6, 1, 'rgba(0,0,0,0.25)');
+  if (frozen){
+    cx2.font = '4px "Press Start 2P", monospace';
+    cx2.fillStyle = '#5fc8e8';
+    cx2.fillText(Math.ceil(G.freeze)+'с', bx - 2, by + bh + 4);
+  }
+
+  // === НИЗ: название текущего энергетика над банкой ===
+  if (G.state === 'waiting' && G.can){
+    cx2.textAlign = 'center';
+    cx2.font = '7px "Press Start 2P", monospace';
+    cx2.fillStyle = '#1b1408';
+    cx2.fillText(G.can.brand.name, L.cx+1, L.spawnY - 57);
+    cx2.fillStyle = G.can.brand.col;
+    cx2.fillText(G.can.brand.name, L.cx, L.spawnY - 58);
+    cx2.font = '5px "Press Start 2P", monospace';
+    cx2.fillStyle = '#d8cfb8';
+    cx2.fillText('+' + Math.round(G.can.brand.energy * STAGES[G.stage].mul) + ' энергии', L.cx, L.spawnY - 48);
+    if (!G.thrown){
+      const yy = L.spawnY - 70 - (Math.sin(performance.now()/300)+1)*3;
+      cx2.font = '8px "Press Start 2P", monospace';
+      cx2.fillStyle = '#ffd23e';
+      cx2.fillText('↑', L.cx, yy);
+    }
+  }
+
+  // фолбэк-зоны баланса
+  if (G.state === 'balancing' && !Tilt.fresh()){
+    cx2.textAlign = 'center';
+    cx2.fillStyle = 'rgba(159,208,255,0.55)';
+    cx2.font = '10px "Press Start 2P", monospace';
+    cx2.fillText('◄', 16, H - 40);
+    cx2.fillText('►', W - 16, H - 40);
+  }
+
+  // баннер (по центру, на окне — там чисто)
+  if (G.banner){
+    const b = G.banner;
+    const a = b.t < 0.2 ? b.t/0.2 : (b.t > b.life-0.4 ? (b.life-b.t)/0.4 : 1);
+    cx2.globalAlpha = clamp(a, 0, 1);
+    cx2.textAlign = 'center';
+    cx2.font = '9px "Press Start 2P", monospace';
+    cx2.fillStyle = '#1b1408';
+    cx2.fillText(b.txt, L.cx+1, ST + 56 + 1);
+    cx2.fillStyle = b.col;
+    cx2.fillText(b.txt, L.cx, ST + 56);
+    if (b.sub){
+      cx2.font = '5px "Press Start 2P", monospace';
+      cx2.fillStyle = '#d8cfb8';
+      cx2.fillText(b.sub, L.cx, ST + 68);
+    }
+    cx2.globalAlpha = 1;
+  }
+
+  // всплывающие тексты
+  cx2.textAlign = 'center';
+  for (const f of floats){
+    cx2.globalAlpha = clamp(1 - f.t/f.life, 0, 1);
+    cx2.font = f.size + 'px "Press Start 2P", monospace';
+    cx2.fillStyle = '#1b1408';
+    cx2.fillText(f.txt, f.x+1, f.y+1);
+    cx2.fillStyle = f.col;
+    cx2.fillText(f.txt, f.x, f.y);
+    cx2.globalAlpha = 1;
+  }
+}
+
+function draw(){
+  cx2.save();
+  if (G.shake > 0){
+    cx2.translate(Math.round((Math.random()*2-1)*3*G.shake/0.5),
+                  Math.round((Math.random()*2-1)*3*G.shake/0.5));
+  }
+  drawRoom();
+  drawStudent();
+  drawLaptopAndLamp();
+  drawDesk();
+
+  const dim = (1 - G.energy/100) * 0.28;
+  if (dim > 0.01){
+    cx2.fillStyle = 'rgba(8,6,2,' + dim + ')';
+    cx2.fillRect(0, 0, W, H);
+  }
+
+  drawCan();
+
+  for (const p of parts){
+    cx2.globalAlpha = clamp(1 - p.t/p.life, 0, 1);
+    cx2.fillStyle = p.col;
+    cx2.fillRect(p.x - p.r/2, p.y - p.r/2, p.r, p.r);
+  }
+  cx2.globalAlpha = 1;
+
+  drawHUD();
+  cx2.restore();
+}
+
+/* ---------- Цикл ---------- */
+function loop(t){
+  const dt = Math.min((t - lastT)/1000, 0.05);
+  lastT = t;
+  if (G.state !== 'start') update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+document.addEventListener('visibilitychange', () => {
+  lastT = performance.now();
+  if (AU.ctx){ document.hidden ? AU.ctx.suspend() : (!AU.muted && AU.ctx.resume()); }
+});
+
+/* ---------- Кнопки ---------- */
+document.getElementById('startBtn').addEventListener('click', () => {
+  AU.init(); AU.tap(); AU.startMusic();
+  Tilt.start();
+  Hap.imp('light');
+  document.getElementById('start').classList.add('hidden');
+  resetGame(false);
+});
+document.getElementById('againBtn').addEventListener('click', () => {
+  AU.tap(); Hap.imp('light');
+  document.getElementById('over').classList.add('hidden');
+  document.getElementById('overTitle').style.color = '#ffd23e';
+  resetGame(true);
+});
+document.getElementById('mute').addEventListener('click', function(){
+  AU.setMute(!AU.muted);
+  this.classList.toggle('off', AU.muted);
+});
+
+layoutCanvas();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
