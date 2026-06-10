@@ -105,9 +105,7 @@
 <script>
 "use strict";
 /* ============================================================
-   НЕ СПАТЬ! — исправленная балансировка (мягкая, как в старой версии)
-   Остальные фичи (этапы, жизни, овцы, total, летающие банки) сохранены.
-   Голова опущена на 3 пикселя (L.headY = L.deskY - 36).
+   НЕ СПАТЬ! — исправленная балансировка (полностью как в старой версии)
    ============================================================ */
 
 const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
@@ -194,7 +192,7 @@ function computeLayout(){
   L.deskR = L.cx + 58;
   L.landY = L.deskY + 8;
   L.headX = L.cx;
-  L.headY = L.deskY - 36;    // опущена на 3 пикселя относительно исходного -39
+  L.headY = L.deskY - 36;    // опущена на 3 пикселя
   L.spawnX = L.cx;
   L.spawnY = H - 28;
   L.barX = W - 12;
@@ -750,6 +748,7 @@ function throwCan(vx, vy){
   const spins = 1 + Math.min(2, Math.round(sp * 0.55));
   c.spin = (vx >= 0 ? 1 : -1) * spins * Math.PI * 2;
   c.jit = (Math.random()*0.24 - 0.12);
+  // ИСПРАВЛЕНИЕ: старый коэффициент wobble
   c.wobble = clamp((sp - 0.85) * 0.95, 0, 1.7);
   if (c.wobble < 0.16 && Math.random() < 0.25) c.wobble = 0.25 + Math.random()*0.3;
   G.state = 'flying'; G.t = 0; G.thrown = true;
@@ -823,9 +822,7 @@ function update(dt){
           G.state = 'stabilize'; G.t = 0;
         } else {
           c.th = c.jit;
-          // ------------------------------------------------------------
-          // ИСПРАВЛЕНИЕ БАЛАНСИРОВКИ: параметры из СТАРОЙ (комфортной) версии
-          // ------------------------------------------------------------
+          // ИСПРАВЛЕНИЕ: старая формула начальной угловой скорости
           c.om = (Math.random() < 0.5 ? -1 : 1) * (0.5 + c.wobble * 0.7);
           c.stable = 0;
           c.wasBalanced = true;
@@ -843,22 +840,20 @@ function update(dt){
     case 'balancing': {
       const c = G.can;
       const ctl = Tilt.fresh() ? clamp(Tilt.val / 30, -1, 1) : touchCtl;
-      // ------------------------------------------------------------
-      // ГЛАВНОЕ ИСПРАВЛЕНИЕ: мягкие коэффициенты из старой версии
-      // ------------------------------------------------------------
+      // ИСПРАВЛЕНИЕ: старые коэффициенты
       c.om += (1.9 * Math.sin(c.th) + 4.5 * ctl) * dt;
-      c.om -= c.om * 1.1 * dt;            // высокое трение
+      c.om -= c.om * 1.1 * dt;
       c.th += c.om * dt;
       c.rot = c.th;
       if (Math.abs(c.th) > 0.55 && performance.now() - balHapT > 220){
         balHapT = performance.now(); Hap.imp('rigid');
       }
-      // старый порог падения (1.15)
+      // ИСПРАВЛЕНИЕ: старый порог падения
       if (Math.abs(c.th) > 1.15){
         G.state = 'fall'; G.t = 0;
         break;
       }
-      // старые условия стабилизации
+      // ИСПРАВЛЕНИЕ: старые условия стабилизации
       if (Math.abs(c.th) < 0.16 && Math.abs(c.om) < 0.4){
         c.stable += dt;
         if (c.stable > 0.25 && G.t > 0.6){
@@ -1417,8 +1412,7 @@ document.getElementById('startBtn').addEventListener('click', () => {
 });
 document.getElementById('againBtn').addEventListener('click', () => {
   AU.tap(); Hap.imp('light');
-  document.getElementById('over').classList.remove('hidden');
-  document.getElementById('over').classList.add('hidden'); // quick fix: скрываем и показываем заново
+  document.getElementById('over').classList.add('hidden');
   document.getElementById('overTitle').style.color = '#ffd23e';
   resetGame(true);
 });
