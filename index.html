@@ -1375,12 +1375,14 @@ document.getElementById('againBtn').addEventListener('click', () => {
   document.getElementById('overTitle').style.color = '#ffd23e';
   resetGame(true);
 });
+
 document.getElementById('mute').addEventListener('click', function(){
   AU.setMute(!AU.muted);
   this.classList.toggle('off', AU.muted);
 });
 
 layoutCanvas();
+
 requestAnimationFrame(loop);
 </script>
 </body>
