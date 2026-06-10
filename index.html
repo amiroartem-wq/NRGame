@@ -193,7 +193,6 @@ function computeLayout(){
   L.deskR = L.cx + 58;
   L.landY = L.deskY + 8;
   L.headX = L.cx;
-  // ИЗМЕНЕНИЕ: голова опущена на 3 пикселя (было -39) – теперь -36
   L.headY = L.deskY - 36;
   L.spawnX = L.cx;
   L.spawnY = H - 28;
@@ -960,6 +959,7 @@ function startDrink(){
   G.prog = Math.min(100, G.prog + pr);
   G.score++; G.total++;
   if (G.score > G.hi) G.hi = G.score;
+  // ⚡ за обычную, ⚡⚡ за сбалансированную
   const bolt = c.wasBalanced ? '⚡⚡' : '⚡';
   addFloat(L.headX + 16, L.headY - 2, '+' + Math.round(c.brand.energy * st.mul) + bolt, '#5fd98a', 6);
   Hap.notif('success'); AU.ding();
@@ -1281,15 +1281,15 @@ function fitFont(txt, max, base){
 function drawHUD(){
   cx2.textBaseline = 'top';
 
-  // этап + прогресс (СМЕЩЕНЫ ВНИЗ, ЧТОБЫ НЕ ПЕРЕКРЫВАТЬ DYNAMIC ISLAND)
+  // этап + прогресс
   cx2.textAlign = 'center';
   fitFont(STAGES[G.stage].name, W - 30, 10);
   cx2.fillStyle = '#14101c';
-  cx2.fillText(STAGES[G.stage].name, L.cx+1, ST + 38);
+  cx2.fillText(STAGES[G.stage].name, L.cx+1, ST + 5);
   cx2.fillStyle = '#ffd23e';
-  cx2.fillText(STAGES[G.stage].name, L.cx, ST + 38);
+  cx2.fillText(STAGES[G.stage].name, L.cx, ST + 4);
 
-  const pbX = 24, pbW = W - 48, pbY = ST + 52, pbH = 7;
+  const pbX = 24, pbW = W - 48, pbY = ST + 18, pbH = 7;
   rect(pbX-1, pbY-1, pbW+2, pbH+2, '#14101c');
   rect(pbX, pbY, pbW, pbH, '#2a2438');
   rect(pbX, pbY, Math.round(pbW * G.prog/100), pbH, '#ffd23e');
@@ -1297,7 +1297,6 @@ function drawHUD(){
   cx2.fillStyle = '#14101c';
   cx2.fillText(Math.round(G.prog) + '%', L.cx, pbY + 2);
 
-  // часы и рекорд (остались на своих местах)
   cx2.font = '4px "Press Start 2P", monospace';
   cx2.textAlign = 'left';
   cx2.fillStyle = '#aab0c8';
@@ -1367,13 +1366,13 @@ function drawHUD(){
     cx2.textAlign = 'center';
     fitFont(b.txt, W - 14, 9);
     cx2.fillStyle = '#14101c';
-    cx2.fillText(b.txt, L.cx+1, ST + 70);
+    cx2.fillText(b.txt, L.cx+1, ST + 56 + 1);
     cx2.fillStyle = b.col;
-    cx2.fillText(b.txt, L.cx, ST + 70);
+    cx2.fillText(b.txt, L.cx, ST + 56);
     if (b.sub){
       cx2.font = '5px "Press Start 2P", monospace';
       cx2.fillStyle = '#c8cce0';
-      cx2.fillText(b.sub, L.cx, ST + 82);
+      cx2.fillText(b.sub, L.cx, ST + 68);
     }
     cx2.globalAlpha = 1;
   }
