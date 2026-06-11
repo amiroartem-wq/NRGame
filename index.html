@@ -410,16 +410,53 @@ const CRUSH_MAP = [
 ];
 
 const BRANDS = [
-  { id:'let', name:'LETENERGY', lines:['LET','ENRG'], energy:14, p:0.45,
+  { id:'let', name:'LETENERGY', lines:['LET','ENRG'], energy:14, p:0.05,
     pal:{ B:'#c2c8d4', d:'#8e96a6', h:'#eef2f8', L:'#0fb8d8' },
     txt:['#0e3038','#0e3038'], col:'#4fd8ee' },
-  { id:'valt', name:'VALT', lines:['VALT'], energy:20, p:0.25,
+  { id:'valt', name:'VALT', lines:['VALT'], energy:20, p:0.125,
     pal:{ B:'#6a22c8', d:'#47158c', h:'#9a5ef0', L:'#121218' },
     txt:['#9a5ef0'], col:'#9a5ef0' },
-  { id:'adr', name:'АДРЕНАЛИНЧИК', lines:['АДРЕНА','ЛИНЧИК'], energy:24, p:0.20,
+  // чёрная банка с оранжевым огоньком; статы и вероятность делит с VALT
+  { id:'bern', name:'ЭН. НАПИТОК БЭРН', lines:['БЭРН'], energy:20, p:0.125, ty:28,
+    pal:{ B:'#1a1a22', d:'#0e0e14', h:'#30303c', L:'#1a1a22' },
+    txt:['#ff7a1e'], col:'#ff7a1e',
+    skin(g){
+      g.fillStyle = '#ff7a1e'; // силуэт огонька
+      g.fillRect(6,5,1,1);
+      g.fillRect(5,6,1,1); g.fillRect(7,6,1,1);
+      g.fillRect(4,7,1,2); g.fillRect(8,7,1,2);
+      g.fillRect(4,9,5,1); g.fillRect(5,10,3,1);
+      g.fillStyle = '#ffd23e'; // жёлтое ядро пламени
+      g.fillRect(6,7,1,1); g.fillRect(5,8,3,1); g.fillRect(6,9,1,1);
+    } },
+  // чёрная банка с зелёной «когтистой» M
+  { id:'man', name:'MANSTER', lines:['MAN','STER'], energy:22, p:0.25, ty:28,
+    pal:{ B:'#16161e', d:'#0c0c12', h:'#2a2a36', L:'#16161e' },
+    txt:['#3fd84a','#3fd84a'], col:'#3fd84a',
+    skin(g){
+      g.fillStyle = '#3fd84a'; // три «царапины» буквой M
+      g.fillRect(4,6,1,6); g.fillRect(6,8,1,5); g.fillRect(8,6,1,6);
+      g.fillStyle = '#7af084'; // блики на кончиках
+      g.fillRect(4,5,1,1); g.fillRect(6,7,1,1); g.fillRect(8,5,1,1);
+    } },
+  // чёрная банка с силуэтом гориллы
+  { id:'obz', name:'ОБЕЗЬЯНА', lines:['ОБЕЗЬ','ЯНА'], energy:26, p:0.25, ty:28,
+    pal:{ B:'#17171f', d:'#0d0d13', h:'#2c2c3a', L:'#17171f' },
+    txt:['#c8ccd4','#c8ccd4'], col:'#c8ccd4',
+    skin(g){
+      g.fillStyle = '#c8ccd4'; // силуэт гориллы: голова и плечи
+      g.fillRect(5,5,3,1);
+      g.fillRect(4,6,5,2);
+      g.fillRect(3,8,7,2);
+      g.fillRect(2,9,1,3); g.fillRect(10,9,1,3);
+      g.fillRect(4,10,5,2);
+      g.fillStyle = '#17171f'; // глаза
+      g.fillRect(5,6,1,1); g.fillRect(7,6,1,1);
+    } },
+  { id:'adr', name:'АДРЕНАЛИНЧИК', lines:['АДРЕНА','ЛИНЧИК'], energy:24, p:0.12,
     pal:{ B:'#17171f', d:'#0d0d13', h:'#2c2c3a', L:'#1f1f2a' },
     txt:['#ffd23e','#ffd23e'], col:'#ffd23e' },
-  { id:'red', name:'REDCOOL', lines:['RED','COOL'], energy:40, p:0.10,
+  { id:'red', name:'REDCOOL', lines:['RED','COOL'], energy:40, p:0.08,
     pal:{ B:'#c8ccd6', d:'#9aa0ae', h:'#e8ecf4', L:'#c8ccd6' },
     txt:['#d4242e','#1e4fa8'], col:'#ff8a72',
     skin(g){
@@ -455,7 +492,7 @@ function buildCans(){
       while (fs > 3 && g.measureText(b.lines[i]).width > 18){
         fs -= 0.5; g.font = fs + 'px "Press Start 2P", monospace';
       }
-      g.fillText(b.lines[i], 13, 16 + (i - (n-1)/2) * 6);
+      g.fillText(b.lines[i], 13, (b.ty || 16) + (i - (n-1)/2) * 6);
     }
     b.big = big;
     b.crush = spr(CRUSH_MAP, pal);
@@ -533,6 +570,11 @@ const AU = {
   warn(){ const t=this.now(); this.tone(t,0.06,'square',880,880,0.07);
           this.tone(t+0.12,0.06,'square',880,880,0.07); },
   tap(){ this.tone(this.now(),0.05,'triangle',440,440,0.15); },
+  key(){ // тихий клик клавиатуры
+    const t = this.now();
+    this.noise(t, 0.025, 'highpass', 3000 + Math.random()*2000, 0.035);
+    this.tone(t, 0.02, 'square', 900 + Math.random()*500, null, 0.012);
+  },
   startMusic(){
     if (!this.ctx || this.musicOn) return;
     this.musicOn = true;
@@ -541,11 +583,6 @@ const AU = {
     const CH = [ [57,60,64,67], [53,57,60,65], [60,64,67,71], [55,59,62,66] ];
     const BS = [45, 41, 48, 43];
     let bar = 0, nextT = this.now() + 0.1;
-    const cr = this.ctx.createBufferSource(); cr.buffer = this.noiseBuf(); cr.loop = true;
-    const cf = this.ctx.createBiquadFilter(); cf.type='highpass'; cf.frequency.value = 5000;
-    const cg = this.ctx.createGain(); cg.gain.value = 0.012;
-    cr.connect(cf); cf.connect(cg); cg.connect(this.master); cr.start();
-    this._crackle = cg;
     this._mtimer = setInterval(() => {
       if (this.muted) return;
       while (nextT < this.now() + 0.3) {
@@ -573,7 +610,6 @@ const AU = {
   },
   setMute(m){
     this.muted = m;
-    if (this._crackle) this._crackle.gain.value = m ? 0 : 0.012;
   }
 };
 
@@ -757,6 +793,7 @@ function throwCan(vx, vy){
 
 /* ---------- Update ---------- */
 let lastT = 0, balHapT = 0;
+let keyT = 0.8, keyBurst = 0;
 
 function update(dt){
   G.t += dt;
@@ -776,6 +813,20 @@ function update(dt){
   for (const d of drips) d.len = Math.min(d.max, d.len + 8*dt);
 
   const playing = ['waiting','flying','balancing','stabilize','drinking'].includes(G.state);
+
+  // студент печатает: пачки клавиш с паузами (не во время питья)
+  if (playing && G.state !== 'drinking'){
+    keyT -= dt;
+    if (keyT <= 0){
+      if (keyBurst > 0){
+        AU.key(); keyBurst--;
+        keyT = 0.07 + Math.random()*0.13;
+      } else {
+        keyBurst = 3 + Math.floor(Math.random()*6);
+        keyT = 0.6 + Math.random()*1.5;
+      }
+    }
+  }
 
   if (playing){
     let drain = STAGES[G.stage].drain;
